@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: colors.onBackgroundMuted,
     marginBottom: 6,
   },
   trigger: {
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   triggerText: { fontFamily: fonts.body, fontSize: 16, color: colors.text, flexShrink: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,

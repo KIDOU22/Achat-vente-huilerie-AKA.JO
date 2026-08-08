@@ -28,7 +28,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: colors.onBackgroundMuted,
     marginBottom: 6,
   },
   input: {

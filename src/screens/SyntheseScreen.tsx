@@ -22,7 +22,7 @@ export function SyntheseScreen() {
   if (!isManager) {
     return (
       <View style={styles.locked}>
-        <Lock size={32} color={colors.textFaint} />
+        <Lock size={32} color={colors.onBackgroundFaint} />
         <Text style={styles.lockedTitle}>Accès réservé au gérant</Text>
         <Text style={styles.lockedSubtitle}>
           Les montants et la synthèse financière ne sont visibles que par le gérant.
@@ -82,7 +82,7 @@ function SyntheseContent() {
                 onPress={() => setPeriode(p.key)}
                 style={[styles.periodeChip, active ? { backgroundColor: colors.text } : styles.periodeChipInactive]}
               >
-                <Text style={[styles.periodeChipText, { color: active ? colors.background : colors.textMuted }]}>{p.label}</Text>
+                <Text style={[styles.periodeChipText, { color: active ? colors.onBackground : colors.textMuted }]}>{p.label}</Text>
               </Pressable>
             );
           })}
@@ -136,14 +136,14 @@ function SyntheseContent() {
 const styles = StyleSheet.create({
   container: { padding: 20, gap: 20, paddingBottom: 60 },
   locked: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 40 },
-  lockedTitle: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
-  lockedSubtitle: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, textAlign: 'center' },
+  lockedTitle: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.onBackground },
+  lockedSubtitle: { fontFamily: fonts.body, fontSize: 12, color: colors.onBackgroundMuted, textAlign: 'center' },
   label: {
     fontFamily: fonts.mono,
     fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: colors.onBackgroundMuted,
     marginBottom: 8,
   },
   periodeRow: { flexDirection: 'row', gap: 8 },
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12 },
   statLabel: { fontFamily: fonts.mono, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: colors.textFaint },
   statBig: { fontFamily: fonts.monoBold, fontSize: 18, marginTop: 4 },
-  statSmall: { fontFamily: fonts.mono, fontSize: 13, color: '#c9c2b6' },
+  statSmall: { fontFamily: fonts.mono, fontSize: 13, color: colors.textMuted },
   soldeBox: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -173,6 +173,6 @@ const styles = StyleSheet.create({
   metriqueBtn: { paddingHorizontal: 10, paddingVertical: 5 },
   metriqueBtnActive: { backgroundColor: colors.text },
   metriqueText: { fontFamily: fonts.bodyMedium, fontSize: 10, color: colors.textMuted },
-  metriqueTextActive: { color: colors.background },
+  metriqueTextActive: { color: colors.onBackground },
   chartCard: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 },
 });

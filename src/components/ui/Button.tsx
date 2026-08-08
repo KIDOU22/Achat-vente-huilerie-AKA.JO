@@ -29,11 +29,11 @@ export function Button({ label, onPress, disabled, loading, color = colors.accen
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={solid ? colors.background : color} />
+        <ActivityIndicator color={solid ? colors.onBackground : color} />
       ) : (
         <>
           {icon}
-          <Text style={[styles.label, { color: solid ? colors.background : color }]}>{label}</Text>
+          <Text style={[styles.label, { color: solid ? colors.onBackground : color }]}>{label}</Text>
         </>
       )}
     </Pressable>

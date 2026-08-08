@@ -129,7 +129,7 @@ export function AchatScreen() {
         </View>
       )}
 
-      <Button label="Enregistrer la pesée" onPress={handleSubmit} disabled={!canSubmit} loading={saving} icon={<Check size={18} color={colors.background} />} />
+      <Button label="Enregistrer la pesée" onPress={handleSubmit} disabled={!canSubmit} loading={saving} icon={<Check size={18} color={colors.onBackground} />} />
 
       {lastTicket && (
         <View style={styles.lastTicket}>
@@ -174,7 +174,15 @@ const styles = StyleSheet.create({
     minWidth: 80,
     paddingVertical: 0,
   },
-  montantRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
+  montantRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
   montantValue: { fontFamily: fonts.monoSemiBold, fontSize: 20, color: colors.text },
   lastTicket: { marginTop: 12 },
   lastTicketLabel: {
@@ -182,7 +190,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: colors.onBackgroundMuted,
     marginBottom: 8,
   },
 });

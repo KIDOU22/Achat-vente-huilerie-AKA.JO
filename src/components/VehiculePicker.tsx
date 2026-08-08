@@ -17,7 +17,7 @@ export function VehiculePicker({ value, onChange, color = colors.accent }: { val
               onPress={() => onChange(v)}
               style={[styles.chip, active ? { backgroundColor: color } : styles.chipInactive]}
             >
-              <Text style={[styles.chipText, { color: active ? colors.background : colors.textMuted }]} numberOfLines={2}>
+              <Text style={[styles.chipText, { color: active ? colors.onBackground : colors.textMuted }]} numberOfLines={2}>
                 {v}
               </Text>
             </Pressable>
@@ -34,7 +34,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: colors.onBackgroundMuted,
     marginBottom: 6,
   },
   grid: {

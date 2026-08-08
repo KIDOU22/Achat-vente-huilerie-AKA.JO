@@ -5,7 +5,7 @@ import { colors } from '../theme/colors';
 export function LoadingScreen() {
   return (
     <View style={styles.container}>
-      <ActivityIndicator color={colors.accent} size="large" />
+      <ActivityIndicator color={colors.onBackground} size="large" />
     </View>
   );
 }

@@ -47,11 +47,11 @@ export function AppHeader() {
         <View style={styles.actions}>
           {isManager && (
             <Pressable onPress={() => router.push('/comptes')} hitSlop={10}>
-              <UserCog size={18} color={colors.textMuted} />
+              <UserCog size={18} color={colors.onBackgroundMuted} />
             </Pressable>
           )}
           <Pressable onPress={logout} hitSlop={10}>
-            <LogOut size={18} color={colors.textMuted} />
+            <LogOut size={18} color={colors.onBackgroundMuted} />
           </Pressable>
         </View>
       </View>
@@ -59,20 +59,20 @@ export function AppHeader() {
       <View style={styles.statsStrip}>
         <View style={styles.statCell}>
           <Text style={styles.statLabel}>Régimes — jour</Text>
-          <Text style={[styles.statValue, { color: colors.amber }]}>{formatTonnes(totalTonnageJour)}</Text>
+          <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatTonnes(totalTonnageJour)}</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.statCell}>
           <Text style={styles.statLabel}>Achats — jour</Text>
-          <Text style={[styles.statValue, { color: colors.text }]}>{formatFCFA(totalAchatJour)}</Text>
+          <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalAchatJour)}</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.statCell}>
           <Text style={styles.statLabel}>Ventes huile</Text>
           {isManager ? (
-            <Text style={[styles.statValue, { color: colors.oil }]}>{formatFCFA(totalVenteJour)}</Text>
+            <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalVenteJour)}</Text>
           ) : (
-            <Lock size={14} color={colors.textFaint} />
+            <Lock size={14} color={colors.onBackgroundFaint} />
           )}
         </View>
       </View>
@@ -96,19 +96,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 2,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: colors.onBackgroundMuted,
   },
   title: {
     fontFamily: fonts.heading,
     fontSize: 22,
-    color: colors.text,
+    color: colors.onBackground,
     marginTop: 2,
   },
   logoWrap: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.text,
+    backgroundColor: colors.surface,
     overflow: 'hidden',
   },
   logo: { width: '100%', height: '100%' },
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   userInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  userName: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
+  userName: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.onBackground },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   statsStrip: {
     flexDirection: 'row',
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.borderSubtle,
   },
   statCell: { flex: 1, gap: 2 },
-  statLabel: { fontFamily: fonts.mono, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: colors.textFaint },
+  statLabel: { fontFamily: fonts.mono, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: colors.onBackgroundFaint },
   statValue: { fontFamily: fonts.mono, fontSize: 17, fontWeight: '600' },
-  divider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: 8 },
+  divider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.borderSubtle, marginHorizontal: 8 },
 });

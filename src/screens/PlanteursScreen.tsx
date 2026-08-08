@@ -57,7 +57,7 @@ export function PlanteursScreen() {
                 <TextField label="Téléphone" value={tel} onChangeText={setTel} placeholder="07 00 00 00" keyboardType="phone-pad" />
               </View>
             </View>
-            <Button label="Ajouter" onPress={handleAdd} disabled={!nom.trim()} loading={saving} color={colors.frond} icon={<Plus size={18} color={colors.background} />} />
+            <Button label="Ajouter" onPress={handleAdd} disabled={!nom.trim()} loading={saving} color={colors.frond} icon={<Plus size={18} color={colors.onBackground} />} />
           </Card>
 
           <View style={styles.searchRow}>
@@ -114,5 +114,5 @@ const styles = StyleSheet.create({
   tonnageBlock: { alignItems: 'flex-end' },
   tonnageValue: { fontFamily: fonts.monoSemiBold, fontSize: 15, color: colors.amber },
   tonnageLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, marginTop: 2 },
-  empty: { textAlign: 'center', color: colors.textFaint, fontFamily: fonts.body, paddingVertical: 24 },
+  empty: { textAlign: 'center', color: colors.onBackgroundMuted, fontFamily: fonts.body, paddingVertical: 24 },
 });

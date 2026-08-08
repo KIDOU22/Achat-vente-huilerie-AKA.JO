@@ -132,7 +132,7 @@ export function ComptesScreen() {
                     active ? { backgroundColor: roleColors[r] } : styles.roleChipInactive,
                   ]}
                 >
-                  <Text style={[styles.roleChipText, { color: active ? colors.background : colors.textMuted }]}>
+                  <Text style={[styles.roleChipText, { color: active ? colors.onBackground : colors.textMuted }]}>
                     {ROLE_LABELS[r]}
                   </Text>
                 </Pressable>
@@ -147,7 +147,7 @@ export function ComptesScreen() {
           disabled={!nom.trim() || !identifiant.trim() || !code.trim()}
           loading={saving}
           color={colors.frond}
-          icon={<Plus size={16} color={colors.background} />}
+          icon={<Plus size={16} color={colors.onBackground} />}
         />
       </Card>
 
@@ -186,7 +186,7 @@ export function ComptesScreen() {
                         isSelf && { opacity: 0.4 },
                       ]}
                     >
-                      <Text style={[styles.roleChipSmallText, { color: active ? colors.background : colors.textMuted }]}>
+                      <Text style={[styles.roleChipSmallText, { color: active ? colors.onBackground : colors.textMuted }]}>
                         {ROLE_LABELS[r]}
                       </Text>
                     </Pressable>
@@ -208,7 +208,7 @@ export function ComptesScreen() {
 const styles = StyleSheet.create({
   container: { padding: 20, paddingBottom: 60 },
   locked: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  lockedText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
+  lockedText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.onBackground },
   cardTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.text },
   fieldLabel: {
     fontFamily: fonts.mono,
@@ -231,5 +231,5 @@ const styles = StyleSheet.create({
   roleChipSmall: { flex: 1, borderRadius: 8, paddingVertical: 7, alignItems: 'center' },
   roleChipSmallInactive: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border },
   roleChipSmallText: { fontFamily: fonts.bodyMedium, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  footnote: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, marginTop: 16, lineHeight: 16 },
+  footnote: { fontFamily: fonts.body, fontSize: 11, color: colors.onBackgroundMuted, marginTop: 16, lineHeight: 16 },
 });

@@ -47,7 +47,7 @@ export function HistoriqueScreen() {
       }
       ListEmptyComponent={
         <View style={styles.empty}>
-          <ClipboardList size={32} color={colors.textFaint} />
+          <ClipboardList size={32} color={colors.onBackgroundFaint} />
           <Text style={styles.emptyText}>Aucune opération enregistrée pour l'instant.</Text>
         </View>
       }
@@ -90,8 +90,8 @@ function PeseeRow({
           onPress={() => onTogglePaye(pesee.id, !pesee.paye)}
           style={[styles.payePill, { backgroundColor: pesee.paye ? `${colors.frond}33` : `${colors.accent}33` }]}
         >
-          {pesee.paye ? <Check size={11} color="#9CB894" /> : <X size={11} color="#F2C4AE" />}
-          <Text style={{ color: pesee.paye ? '#9CB894' : '#F2C4AE', fontFamily: fonts.bodyMedium, fontSize: 11 }}>
+          {pesee.paye ? <Check size={11} color={colors.frond} /> : <X size={11} color={colors.accent} />}
+          <Text style={{ color: pesee.paye ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 11 }}>
             {pesee.paye ? 'Payé' : 'Impayé'}
           </Text>
         </Pressable>
@@ -142,14 +142,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 16,
   },
-  impayesText: { color: '#F2C4AE', fontFamily: fonts.body, fontSize: 13 },
+  impayesText: { color: colors.onBackground, fontFamily: fonts.body, fontSize: 13 },
   bold: { fontFamily: fonts.bodySemiBold },
   sectionTitle: {
     fontFamily: fonts.mono,
     fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: colors.onBackgroundMuted,
     marginBottom: 10,
   },
   card: {
@@ -181,10 +181,10 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
-  footerLeft: { fontFamily: fonts.mono, fontSize: 13, color: '#c9c2b6' },
+  footerLeft: { fontFamily: fonts.mono, fontSize: 13, color: colors.textMuted },
   footerRight: { fontFamily: fonts.monoSemiBold, fontSize: 13, color: colors.text },
   lockedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   lockedText: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint },
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
-  emptyText: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted },
+  emptyText: { fontFamily: fonts.body, fontSize: 13, color: colors.onBackgroundMuted },
 });

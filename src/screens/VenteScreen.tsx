@@ -120,7 +120,7 @@ export function VenteScreen() {
         disabled={!canSubmit}
         loading={saving}
         color={colors.oil}
-        icon={<Check size={18} color={colors.background} />}
+        icon={<Check size={18} color={colors.onBackground} />}
       />
 
       {lastVente && (
@@ -167,7 +167,15 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   lockedRow: { flexDirection: 'row', alignItems: 'center' },
-  montantRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
+  montantRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
   montantValue: { fontFamily: fonts.monoSemiBold, fontSize: 20, color: colors.text },
   lastTicket: { marginTop: 12 },
   lastTicketLabel: {
@@ -175,7 +183,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: colors.onBackgroundMuted,
     marginBottom: 8,
   },
 });

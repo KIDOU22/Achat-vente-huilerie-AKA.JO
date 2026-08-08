@@ -18,8 +18,8 @@ export default function TabsLayout() {
           paddingTop: 8,
         },
         tabBarLabelStyle: { fontFamily: fonts.bodyMedium, fontSize: 10 },
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textFaint,
+        tabBarActiveTintColor: colors.onBackground,
+        tabBarInactiveTintColor: colors.onBackgroundFaint,
       }}
     >
       <Tabs.Screen
@@ -31,7 +31,6 @@ export default function TabsLayout() {
         options={{
           title: 'Vente',
           tabBarIcon: ({ color, size }) => <Droplet color={color} size={size} />,
-          tabBarActiveTintColor: colors.oil,
         }}
       />
       <Tabs.Screen
