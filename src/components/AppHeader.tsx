@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { Lock, LogOut, UserCog } from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { useAppData } from '../data/DataContext';
 import { formatFCFA, formatTonnes, todayKey } from '../domain/format';
@@ -15,6 +16,7 @@ export function AppHeader() {
   const { currentUser, isManager, logout } = useAuth();
   const { pesees, ventes } = useAppData();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const today = todayKey();
   const todayPesees = useMemo(() => pesees.filter((p) => new Date(p.ts).toDateString() === today), [pesees, today]);
@@ -27,7 +29,7 @@ export function AppHeader() {
 
   return (
     <View>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerTextBlock}>
           <Text style={styles.eyebrow}>Huilerie Aka.Jo — Pont-bascule</Text>
           <Text style={styles.title}>Régimes &amp; Huile</Text>
@@ -81,7 +83,6 @@ export function AppHeader() {
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
-    paddingTop: 16,
     paddingBottom: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
