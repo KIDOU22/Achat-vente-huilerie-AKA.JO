@@ -55,6 +55,7 @@ function AuthGate() {
 function RootNavigator({ isAuthenticated, isManager }: { isAuthenticated: boolean; isManager: boolean }) {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+      <Stack.Screen name="index" />
       <Stack.Protected guard={!isAuthenticated}>
         <Stack.Screen name="login" />
       </Stack.Protected>
