@@ -70,7 +70,7 @@ function SyntheseContent() {
   const solde = currentBucket.venteMontant - currentBucket.achatMontant;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View>
         <Text style={styles.label}>Période</Text>
         <View style={styles.periodeRow}>
@@ -134,8 +134,9 @@ function SyntheseContent() {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: 20, gap: 20, paddingBottom: 60 },
-  locked: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 40 },
+  locked: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 40 },
   lockedTitle: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.onBackground },
   lockedSubtitle: { fontFamily: fonts.body, fontSize: 12, color: colors.onBackgroundMuted, textAlign: 'center' },
   label: {

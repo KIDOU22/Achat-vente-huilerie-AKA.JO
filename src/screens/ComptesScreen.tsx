@@ -106,7 +106,7 @@ export function ComptesScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Card style={{ gap: 10 }}>
         <Text style={styles.cardTitle}>Nouvel utilisateur</Text>
         <TextField label="Nom complet" value={nom} onChangeText={setNom} placeholder="Nom complet" />
@@ -206,8 +206,9 @@ export function ComptesScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: 20, paddingBottom: 60 },
-  locked: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  locked: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   lockedText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.onBackground },
   cardTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.text },
   fieldLabel: {

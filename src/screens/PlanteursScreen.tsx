@@ -41,6 +41,7 @@ export function PlanteursScreen() {
     <FlatList
       data={filtered}
       keyExtractor={(item) => item.id}
+      style={styles.screen}
       contentContainerStyle={styles.container}
       ListHeaderComponent={
         <View style={{ gap: 14, marginBottom: 18 }}>
@@ -94,6 +95,7 @@ export function PlanteursScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: 20, paddingBottom: 60 },
   cardTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.text },
   grid2: { flexDirection: 'row', gap: 12 },

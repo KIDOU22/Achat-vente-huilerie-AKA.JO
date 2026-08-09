@@ -68,7 +68,7 @@ export function VenteScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <SectionTitle color={colors.oil}>Vente d'huile</SectionTitle>
 
       <TextField label="Client" value={client} onChangeText={setClient} placeholder="Nom du client" />
@@ -134,6 +134,7 @@ export function VenteScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: 20, gap: 14, paddingBottom: 60 },
   grid2: { flexDirection: 'row', gap: 12 },
   netBox: {

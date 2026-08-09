@@ -33,6 +33,7 @@ export function HistoriqueScreen() {
     <SectionList
       sections={sections}
       keyExtractor={(row) => row.item.id}
+      style={styles.screen}
       contentContainerStyle={styles.container}
       stickySectionHeadersEnabled={false}
       ListHeaderComponent={
@@ -132,6 +133,7 @@ function VenteRow({ vente, isManager }: { vente: Vente; isManager: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: 20, paddingBottom: 60 },
   impayesBanner: {
     borderRadius: 10,

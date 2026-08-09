@@ -71,7 +71,7 @@ export function AchatScreen() {
   const planteurById = planteurs.find((p) => p.id === lastTicket?.planteurId);
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <SectionTitle>Achat de régimes</SectionTitle>
 
       <PlanteurPicker planteurs={planteurs} selectedId={selectedPlanteur} onSelect={setSelectedPlanteur} />
@@ -142,6 +142,7 @@ export function AchatScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: 20, gap: 14, paddingBottom: 60 },
   grid2: { flexDirection: 'row', gap: 12 },
   netBox: {

@@ -28,7 +28,7 @@ export function AppHeader() {
   if (!currentUser) return null;
 
   return (
-    <View>
+    <View style={{ backgroundColor: colors.background }}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerTextBlock}>
           <Text style={styles.eyebrow}>Huilerie Aka.Jo — Pont-bascule</Text>
