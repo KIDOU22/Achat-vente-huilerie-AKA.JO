@@ -32,7 +32,7 @@ export function AppHeader() {
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerTextBlock}>
           <Text style={styles.eyebrow}>Huilerie Aka.Jo — Pont-bascule</Text>
-          <Text style={styles.title}>Régimes &amp; Huile</Text>
+          <Text style={styles.title}>RÉGIMES &amp; HUILE</Text>
         </View>
         <View style={styles.logoWrap}>
           <Image source={logo} style={styles.logo} />
@@ -99,10 +99,11 @@ const styles = StyleSheet.create({
     color: colors.onBackgroundMuted,
   },
   title: {
-    fontFamily: fonts.heading,
+    fontFamily: fonts.headingBold,
     fontSize: 22,
-    color: colors.onBackground,
+    color: colors.frond,
     marginTop: 2,
+    letterSpacing: 0.5,
   },
   logoWrap: {
     width: 48,

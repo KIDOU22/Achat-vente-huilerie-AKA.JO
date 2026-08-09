@@ -17,7 +17,7 @@ import { fonts } from '../theme/typography';
 
 export function VenteScreen() {
   const { isManager } = useAuth();
-  const { enregistrerVente, prixLitre, setPrixLitre, prixTransportHuile, setPrixTransportHuile } = useAppData();
+  const { enregistrerVente, prixLitre, setPrixLitre } = useAppData();
 
   const [client, setClient] = useState('');
   const [numTicketPesee, setNumTicketPesee] = useState('');
@@ -26,6 +26,7 @@ export function VenteScreen() {
   const [immatriculation, setImmatriculation] = useState('');
   const [poidsCharge, setPoidsCharge] = useState('');
   const [poidsVide, setPoidsVide] = useState('');
+  const [montantTransportInput, setMontantTransportInput] = useState('');
   const [lastVente, setLastVente] = useState<Vente | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -36,11 +37,10 @@ export function VenteScreen() {
   }, [poidsCharge, poidsVide]);
 
   const prixNum = parseFloat(prixLitre) || 0;
-  const prixTransportNum = parseFloat(prixTransportHuile) || 0;
-  const prixRevient = prixNum - prixTransportNum;
   const montant = Math.round(netVente * prixNum);
-  const montantTransport = Math.round(netVente * prixTransportNum);
+  const montantTransport = Math.round(parseFloat(montantTransportInput) || 0);
   const montantNet = montant - montantTransport;
+  const prixRevient = netVente > 0 ? prixNum - montantTransport / netVente : prixNum;
 
   const canSubmit =
     !!client.trim() && netVente > 0 && !!chauffeur.trim() && !!immatriculation.trim() && !!numTicketPesee.trim();
@@ -49,6 +49,8 @@ export function VenteScreen() {
     if (!canSubmit) return;
     setSaving(true);
     try {
+      // Le coût de transport est saisi en montant total ; le tarif au kg est dérivé pour l'enregistrement.
+      const prixTransportKg = netVente > 0 ? montantTransport / netVente : 0;
       const ticket = await enregistrerVente({
         numTicketPesee,
         client,
@@ -58,7 +60,7 @@ export function VenteScreen() {
         poidsCharge: parseFloat(poidsCharge),
         poidsVide: parseFloat(poidsVide),
         prixLitre: prixNum,
-        prixTransportKg: prixTransportNum,
+        prixTransportKg,
       });
       setLastVente(ticket);
       setClient('');
@@ -67,6 +69,7 @@ export function VenteScreen() {
       setImmatriculation('');
       setPoidsCharge('');
       setPoidsVide('');
+      setMontantTransportInput('');
     } finally {
       setSaving(false);
     }
@@ -117,13 +120,25 @@ export function VenteScreen() {
         )}
       </View>
 
+      <View style={styles.montantRow}>
+        <Text style={styles.netLabel}>Montant vente d'huile</Text>
+        {isManager ? (
+          <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
+        ) : (
+          <View style={styles.lockedRow}>
+            <Lock size={14} color={colors.textFaint} />
+          </View>
+        )}
+      </View>
+
       <View style={styles.priceBox}>
-        <Text style={styles.netLabel}>Coût du transport d'huile (CFA/Kg)</Text>
+        <Text style={styles.netLabel}>Montant total du transport (F)</Text>
         {isManager ? (
           <TextInput
-            value={prixTransportHuile}
-            onChangeText={setPrixTransportHuile}
+            value={montantTransportInput}
+            onChangeText={setMontantTransportInput}
             keyboardType="numeric"
+            placeholder="0"
             style={styles.priceInput}
           />
         ) : (
@@ -133,28 +148,14 @@ export function VenteScreen() {
         )}
       </View>
 
-      {isManager && (prixNum > 0 || prixTransportNum > 0) && (
+      {isManager && montantTransport > 0 && (
         <View style={styles.priceBox}>
           <Text style={styles.netLabel}>Prix de revient (CFA/Kg)</Text>
           <Text style={styles.priceReadOnly}>{formatFCFA(prixRevient)}</Text>
         </View>
       )}
 
-      {isManager && netVente > 0 && prixNum > 0 && (
-        <View style={styles.montantRow}>
-          <Text style={styles.netLabel}>Montant vente d'huile</Text>
-          <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
-        </View>
-      )}
-
-      {isManager && netVente > 0 && prixTransportNum > 0 && (
-        <View style={styles.montantRow}>
-          <Text style={styles.netLabel}>Coût de transport</Text>
-          <Text style={styles.montantValue}>{formatFCFA(montantTransport)}</Text>
-        </View>
-      )}
-
-      {isManager && netVente > 0 && prixNum > 0 && prixTransportNum > 0 && (
+      {isManager && montantTransport > 0 && (
         <View style={styles.montantRow}>
           <Text style={styles.netLabel}>Montant net (revient)</Text>
           <Text style={styles.montantValue}>{formatFCFA(montantNet)}</Text>

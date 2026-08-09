@@ -15,7 +15,6 @@ interface DataContextValue {
   prixKg: string;
   prixLitre: string;
   prixTransportRegime: string;
-  prixTransportHuile: string;
   loading: boolean;
   refresh: () => Promise<void>;
   addPlanteur: (input: { nom: string; village: string; tel: string }) => Promise<Planteur>;
@@ -25,7 +24,6 @@ interface DataContextValue {
   setPrixKg: (value: string) => Promise<void>;
   setPrixLitre: (value: string) => Promise<void>;
   setPrixTransportRegime: (value: string) => Promise<void>;
-  setPrixTransportHuile: (value: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -40,11 +38,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [prixKg, setPrixKgState] = useState('115');
   const [prixLitre, setPrixLitreState] = useState('950');
   const [prixTransportRegime, setPrixTransportRegimeState] = useState('10');
-  const [prixTransportHuile, setPrixTransportHuileState] = useState('10');
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [p, a, v, t, pk, pl, ptr, pth] = await Promise.all([
+    const [p, a, v, t, pk, pl, ptr] = await Promise.all([
       listPlanteurs(db),
       listPesees(db),
       listVentes(db),
@@ -52,7 +49,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       getSetting(db, 'prixKg', '115'),
       getSetting(db, 'prixLitre', '950'),
       getSetting(db, 'prixTransportRegime', '10'),
-      getSetting(db, 'prixTransportHuile', '10'),
     ]);
     setPlanteurs(p);
     setPesees(a);
@@ -61,7 +57,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setPrixKgState(pk);
     setPrixLitreState(pl);
     setPrixTransportRegimeState(ptr);
-    setPrixTransportHuileState(pth);
   }, [db]);
 
   useEffect(() => {
@@ -134,14 +129,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [db]
   );
 
-  const setPrixTransportHuile = useCallback(
-    async (value: string) => {
-      await setSetting(db, 'prixTransportHuile', value);
-      setPrixTransportHuileState(value);
-    },
-    [db]
-  );
-
   const value = useMemo<DataContextValue>(
     () => ({
       planteurs,
@@ -151,7 +138,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       prixKg,
       prixLitre,
       prixTransportRegime,
-      prixTransportHuile,
       loading,
       refresh,
       addPlanteur,
@@ -161,7 +147,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPrixKg,
       setPrixLitre,
       setPrixTransportRegime,
-      setPrixTransportHuile,
     }),
     [
       planteurs,
@@ -171,7 +156,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       prixKg,
       prixLitre,
       prixTransportRegime,
-      prixTransportHuile,
       loading,
       refresh,
       addPlanteur,
@@ -181,7 +165,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPrixKg,
       setPrixLitre,
       setPrixTransportRegime,
-      setPrixTransportHuile,
     ]
   );
 

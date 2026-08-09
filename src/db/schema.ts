@@ -158,5 +158,4 @@ async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
   await seedSettingIfMissing(db, 'prixKg', '115');
   await seedSettingIfMissing(db, 'prixLitre', '950');
   await seedSettingIfMissing(db, 'prixTransportRegime', '10');
-  await seedSettingIfMissing(db, 'prixTransportHuile', '10');
 }

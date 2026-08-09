@@ -140,19 +140,15 @@ export function AchatScreen() {
         )}
       </View>
 
-      {netAchat > 0 && prixNum > 0 && (
-        <View style={styles.montantRow}>
-          <Text style={styles.netLabel}>Montant régime de palme</Text>
-          <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
-        </View>
-      )}
+      <View style={styles.montantRow}>
+        <Text style={styles.netLabel}>Montant régime de palme</Text>
+        <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
+      </View>
 
-      {netAchat > 0 && prixTransportNum > 0 && (
-        <View style={styles.montantRow}>
-          <Text style={styles.netLabel}>Coût de transport</Text>
-          <Text style={styles.montantValue}>{formatFCFA(montantTransport)}</Text>
-        </View>
-      )}
+      <View style={styles.montantRow}>
+        <Text style={styles.netLabel}>Coût de transport</Text>
+        <Text style={styles.montantValue}>{formatFCFA(montantTransport)}</Text>
+      </View>
 
       <Button label="Enregistrer la pesée" onPress={handleSubmit} disabled={!canSubmit} loading={saving} icon={<Check size={18} color={colors.onBackground} />} />
 
