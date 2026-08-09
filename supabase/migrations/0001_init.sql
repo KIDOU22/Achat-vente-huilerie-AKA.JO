@@ -3,6 +3,17 @@
 
 create extension if not exists pgcrypto;
 
+-- Repart d'une base propre si une table du même nom existe déjà (ex: modèle de
+-- démarrage Supabase). Sans risque sur un projet neuf.
+drop view if exists public.ventes_agent_view cascade;
+drop table if exists public.audit_log cascade;
+drop table if exists public.ventes cascade;
+drop table if exists public.pesees cascade;
+drop table if exists public.planteurs cascade;
+drop table if exists public.settings cascade;
+drop table if exists public.profiles cascade;
+drop function if exists public.is_gerant() cascade;
+
 -- ============================================================
 -- PROFILES (miroir des comptes utilisateurs, liés à Supabase Auth)
 -- ============================================================
