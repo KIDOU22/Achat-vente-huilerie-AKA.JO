@@ -37,8 +37,10 @@ export function VenteScreen() {
 
   const prixNum = parseFloat(prixLitre) || 0;
   const prixTransportNum = parseFloat(prixTransportHuile) || 0;
+  const prixRevient = prixNum - prixTransportNum;
   const montant = Math.round(netVente * prixNum);
   const montantTransport = Math.round(netVente * prixTransportNum);
+  const montantNet = montant - montantTransport;
 
   const canSubmit =
     !!client.trim() && netVente > 0 && !!chauffeur.trim() && !!immatriculation.trim() && !!numTicketPesee.trim();
@@ -131,6 +133,13 @@ export function VenteScreen() {
         )}
       </View>
 
+      {isManager && (prixNum > 0 || prixTransportNum > 0) && (
+        <View style={styles.priceBox}>
+          <Text style={styles.netLabel}>Prix de revient (CFA/Kg)</Text>
+          <Text style={styles.priceReadOnly}>{formatFCFA(prixRevient)}</Text>
+        </View>
+      )}
+
       {isManager && netVente > 0 && prixNum > 0 && (
         <View style={styles.montantRow}>
           <Text style={styles.netLabel}>Montant vente d'huile</Text>
@@ -142,6 +151,13 @@ export function VenteScreen() {
         <View style={styles.montantRow}>
           <Text style={styles.netLabel}>Coût de transport</Text>
           <Text style={styles.montantValue}>{formatFCFA(montantTransport)}</Text>
+        </View>
+      )}
+
+      {isManager && netVente > 0 && prixNum > 0 && prixTransportNum > 0 && (
+        <View style={styles.montantRow}>
+          <Text style={styles.netLabel}>Montant net (revient)</Text>
+          <Text style={styles.montantValue}>{formatFCFA(montantNet)}</Text>
         </View>
       )}
 
@@ -197,6 +213,11 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     minWidth: 80,
     paddingVertical: 0,
+  },
+  priceReadOnly: {
+    fontFamily: fonts.monoSemiBold,
+    fontSize: 16,
+    color: colors.oil,
   },
   lockedRow: { flexDirection: 'row', alignItems: 'center' },
   montantRow: {

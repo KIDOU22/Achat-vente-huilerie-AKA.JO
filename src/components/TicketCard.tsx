@@ -51,7 +51,14 @@ export function VenteTicketCard({ t, isManager }: { t: Vente; isManager: boolean
       <Row label="Poids net" value={formatKg(t.net)} bold />
       <Row label="Prix/litre" value={isManager ? formatFCFA(t.prixLitre) : '🔒 masqué'} />
       {t.montantTransport > 0 && (
-        <Row label="Coût transport" value={isManager ? formatFCFA(t.montantTransport) : '🔒 masqué'} />
+        <>
+          <Row label="Coût transport" value={isManager ? formatFCFA(t.montantTransport) : '🔒 masqué'} />
+          <Row
+            label="Prix de revient/kg"
+            value={isManager ? formatFCFA(t.prixLitre - t.prixTransportKg) : '🔒 masqué'}
+          />
+          <Row label="Montant net" value={isManager ? formatFCFA(t.montant - t.montantTransport) : '🔒 masqué'} bold />
+        </>
       )}
     </View>
   );
