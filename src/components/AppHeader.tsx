@@ -99,9 +99,9 @@ const styles = StyleSheet.create({
     color: colors.onBackgroundMuted,
   },
   title: {
-    fontFamily: fonts.headingBold,
+    fontFamily: fonts.heading,
     fontSize: 22,
-    color: colors.frond,
+    color: colors.onBackground,
     marginTop: 2,
     letterSpacing: 0.5,
   },
