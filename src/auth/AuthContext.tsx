@@ -3,6 +3,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authenticate, getUserById } from '../db/repositories/users';
 import type { User } from '../domain/types';
+import { syncSignIn, syncSignOut } from '../sync/auth';
 
 const SESSION_KEY = 'akajo_session_user_id';
 
@@ -55,6 +56,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setCurrentUser(user);
       await SecureStore.setItemAsync(SESSION_KEY, user.id);
+      // Best-effort : établit/crée la session cloud correspondante pour la synchro.
+      // N'affecte jamais le résultat de la connexion locale (fonctionne hors-ligne).
+      syncSignIn({ identifiant, code, nom: user.nom, role: user.role }).catch(() => {});
       return { ok: true };
     },
     [db]
@@ -63,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     setCurrentUser(null);
     await SecureStore.deleteItemAsync(SESSION_KEY);
+    syncSignOut().catch(() => {});
   }, []);
 
   const refreshCurrentUser = useCallback(async () => {

@@ -9,6 +9,7 @@ import { TextField } from '../components/ui/TextField';
 import { changeUserRole, createUser, listUsers, revokeUser } from '../db/repositories/users';
 import { logAudit } from '../db/repositories/audit';
 import { ROLE_LABELS, type Role, type User } from '../domain/types';
+import { syncUpdateProfile } from '../sync/auth';
 import { colors, roleColors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -89,6 +90,7 @@ export function ComptesScreen() {
       details: `Révocation de l'accès de ${user.identifiant}`,
     });
     await refresh();
+    syncUpdateProfile(user.identifiant, { actif: false }).catch(() => {});
   }
 
   async function handleChangeRole(user: User, newRole: Role) {
@@ -103,6 +105,7 @@ export function ComptesScreen() {
       details: `Rôle changé pour ${ROLE_LABELS[newRole]}`,
     });
     await refresh();
+    syncUpdateProfile(user.identifiant, { role: newRole }).catch(() => {});
   }
 
   return (

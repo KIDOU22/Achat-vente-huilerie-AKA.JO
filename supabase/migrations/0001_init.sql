@@ -114,7 +114,7 @@ create table public.pesees (
   montant_transport numeric not null default 0,
   paye boolean not null default false,
   ts timestamptz not null default now(),
-  created_by uuid not null references public.profiles(id)
+  created_by text not null
 );
 
 create index idx_pesees_ts on public.pesees(ts desc);
@@ -143,7 +143,7 @@ create table public.ventes (
   prix_transport_kg numeric not null default 0,
   montant_transport numeric not null default 0,
   ts timestamptz not null default now(),
-  created_by uuid not null references public.profiles(id)
+  created_by text not null
 );
 
 create index idx_ventes_ts on public.ventes(ts desc);
@@ -171,7 +171,7 @@ grant select on public.ventes_agent_view to authenticated;
 create table public.audit_log (
   id uuid primary key default gen_random_uuid(),
   ts timestamptz not null default now(),
-  user_id uuid not null references public.profiles(id),
+  user_id text not null,
   user_nom text not null,
   action text not null,
   entity text not null,

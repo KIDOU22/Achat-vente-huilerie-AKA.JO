@@ -1,11 +1,15 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { createPlanteur, listPlanteurs, tonnageParPlanteur, type PlanteurTonnage } from '../db/repositories/planteurs';
 import { createPesee, listPesees, togglePaye as togglePayeRepo, type CreatePeseeInput } from '../db/repositories/pesees';
 import { createVente, listVentes, type CreateVenteInput } from '../db/repositories/ventes';
 import { getSetting, setSetting } from '../db/repositories/settings';
 import type { Pesee, Planteur, Vente } from '../domain/types';
+import { supabase } from '../lib/supabase';
+import { pullAll } from '../sync/pull';
+import { pushPayeStatus, pushPesee, pushPlanteur, pushSetting, pushVente } from '../sync/push';
+import { subscribeRealtime } from '../sync/realtime';
 
 interface DataContextValue {
   planteurs: Planteur[];
@@ -67,10 +71,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [refresh]);
 
+  // Synchronisation cloud : tire les données distantes au démarrage et à chaque
+  // connexion, puis reste à l'écoute des changements en temps réel (Realtime) pour
+  // que le téléphone du Gérant reflète automatiquement les saisies des agents.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    let unsubscribeRealtime: (() => void) | undefined;
+
+    async function syncNow() {
+      await pullAll(db);
+      if (!cancelled) await refreshRef.current();
+    }
+
+    syncNow();
+    unsubscribeRealtime = subscribeRealtime(() => {
+      syncNow();
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') syncNow();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribeRealtime?.();
+      authListener.subscription.unsubscribe();
+    };
+  }, [db]);
+
   const addPlanteur = useCallback(
     async (input: { nom: string; village: string; tel: string }) => {
       const p = await createPlanteur(db, input);
       await refresh();
+      pushPlanteur(p).catch(() => {});
       return p;
     },
     [db, refresh]
@@ -81,6 +118,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!currentUser) throw new Error('Utilisateur non connecté');
       const t = await createPesee(db, { ...input, userId: currentUser.id, userNom: currentUser.nom });
       await refresh();
+      pushPesee(t).catch(() => {});
       return t;
     },
     [db, refresh, currentUser]
@@ -91,6 +129,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!currentUser) throw new Error('Utilisateur non connecté');
       const t = await createVente(db, { ...input, userId: currentUser.id, userNom: currentUser.nom });
       await refresh();
+      pushVente(t).catch(() => {});
       return t;
     },
     [db, refresh, currentUser]
@@ -101,6 +140,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!currentUser) throw new Error('Utilisateur non connecté');
       await togglePayeRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
       await refresh();
+      pushPayeStatus(id, paye).catch(() => {});
     },
     [db, refresh, currentUser]
   );
@@ -109,6 +149,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async (value: string) => {
       await setSetting(db, 'prixKg', value);
       setPrixKgState(value);
+      pushSetting('prixKg', value).catch(() => {});
     },
     [db]
   );
@@ -117,6 +158,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async (value: string) => {
       await setSetting(db, 'prixLitre', value);
       setPrixLitreState(value);
+      pushSetting('prixLitre', value).catch(() => {});
     },
     [db]
   );
@@ -125,6 +167,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async (value: string) => {
       await setSetting(db, 'prixTransportRegime', value);
       setPrixTransportRegimeState(value);
+      pushSetting('prixTransportRegime', value).catch(() => {});
     },
     [db]
   );
