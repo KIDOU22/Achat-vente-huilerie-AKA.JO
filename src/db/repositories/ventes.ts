@@ -16,6 +16,8 @@ interface VenteRow {
   net: number;
   prix_litre: number;
   montant: number;
+  prix_transport_kg: number;
+  montant_transport: number;
   ts: number;
   created_by: string;
 }
@@ -34,6 +36,8 @@ function toVente(row: VenteRow): Vente {
     net: row.net,
     prixLitre: row.prix_litre,
     montant: row.montant,
+    prixTransportKg: row.prix_transport_kg,
+    montantTransport: row.montant_transport,
     ts: row.ts,
     createdBy: row.created_by,
   };
@@ -53,6 +57,7 @@ export interface CreateVenteInput {
   poidsCharge: number;
   poidsVide: number;
   prixLitre: number;
+  prixTransportKg: number;
   userId: string;
   userNom: string;
 }
@@ -60,14 +65,15 @@ export interface CreateVenteInput {
 export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): Promise<Vente> {
   const net = Math.max(0, input.poidsCharge - input.poidsVide);
   const montant = Math.round(net * input.prixLitre);
+  const montantTransport = Math.round(net * input.prixTransportKg);
   const id = uid();
   const ts = Date.now();
   const countRow = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM ventes');
   const num = (countRow?.count ?? 0) + 1;
 
   await db.runAsync(
-    `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation, poids_charge, poids_vide, net, prix_litre, montant, ts, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation, poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, ts, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     num,
     input.numTicketPesee.trim(),
@@ -80,6 +86,8 @@ export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): 
     net,
     input.prixLitre,
     montant,
+    input.prixTransportKg,
+    montantTransport,
     ts,
     input.userId
   );
@@ -90,7 +98,7 @@ export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): 
     action: 'create',
     entity: 'vente',
     entityId: id,
-    details: `Vente ${input.numTicketPesee} — ${net} kg — ${montant} F`,
+    details: `Vente ${input.numTicketPesee} — ${net} kg — ${montant} F (+ ${montantTransport} F transport)`,
   });
 
   return {
@@ -106,6 +114,8 @@ export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): 
     net,
     prixLitre: input.prixLitre,
     montant,
+    prixTransportKg: input.prixTransportKg,
+    montantTransport,
     ts,
     createdBy: input.userId,
   };

@@ -17,6 +17,8 @@ interface PeseeRow {
   net: number;
   prix_kg: number;
   montant: number;
+  prix_transport_kg: number;
+  montant_transport: number;
   paye: number;
   ts: number;
   created_by: string;
@@ -37,6 +39,8 @@ function toPesee(row: PeseeRow): Pesee {
     net: row.net,
     prixKg: row.prix_kg,
     montant: row.montant,
+    prixTransportKg: row.prix_transport_kg,
+    montantTransport: row.montant_transport,
     paye: row.paye === 1,
     ts: row.ts,
     createdBy: row.created_by,
@@ -58,6 +62,7 @@ export interface CreatePeseeInput {
   poidsCharge: number;
   poidsVide: number;
   prixKg: number;
+  prixTransportKg: number;
   userId: string;
   userNom: string;
 }
@@ -65,14 +70,15 @@ export interface CreatePeseeInput {
 export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): Promise<Pesee> {
   const net = Math.max(0, input.poidsCharge - input.poidsVide);
   const montant = Math.round(net * input.prixKg);
+  const montantTransport = Math.round(net * input.prixTransportKg);
   const id = uid();
   const ts = Date.now();
   const countRow = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM pesees');
   const num = (countRow?.count ?? 0) + 1;
 
   await db.runAsync(
-    `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, type_vehicule, immatriculation, origine, poids_charge, poids_vide, net, prix_kg, montant, paye, ts, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, type_vehicule, immatriculation, origine, poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye, ts, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     id,
     num,
     input.numTicketPesee.trim(),
@@ -86,6 +92,8 @@ export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): 
     net,
     input.prixKg,
     montant,
+    input.prixTransportKg,
+    montantTransport,
     ts,
     input.userId
   );
@@ -96,7 +104,7 @@ export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): 
     action: 'create',
     entity: 'pesee',
     entityId: id,
-    details: `Achat ${input.numTicketPesee} — ${net} kg — ${montant} F`,
+    details: `Achat ${input.numTicketPesee} — ${net} kg — ${montant} F (+ ${montantTransport} F transport)`,
   });
 
   return {
@@ -113,6 +121,8 @@ export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): 
     net,
     prixKg: input.prixKg,
     montant,
+    prixTransportKg: input.prixTransportKg,
+    montantTransport,
     paye: false,
     ts,
     createdBy: input.userId,

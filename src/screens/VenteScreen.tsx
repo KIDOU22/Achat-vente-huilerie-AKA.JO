@@ -10,19 +10,19 @@ import { TextField } from '../components/ui/TextField';
 import { VehiculePicker } from '../components/VehiculePicker';
 import { useAppData } from '../data/DataContext';
 import { formatFCFA, formatKg } from '../domain/format';
-import type { Vente, Vehicule } from '../domain/types';
-import { VEHICULES } from '../domain/types';
+import type { Vente, VehiculeHuile } from '../domain/types';
+import { VEHICULES_HUILE } from '../domain/types';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 export function VenteScreen() {
   const { isManager } = useAuth();
-  const { enregistrerVente, prixLitre, setPrixLitre } = useAppData();
+  const { enregistrerVente, prixLitre, setPrixLitre, prixTransportHuile, setPrixTransportHuile } = useAppData();
 
   const [client, setClient] = useState('');
   const [numTicketPesee, setNumTicketPesee] = useState('');
   const [chauffeur, setChauffeur] = useState('');
-  const [typeVehicule, setTypeVehicule] = useState<Vehicule>(VEHICULES[0]);
+  const [typeVehicule, setTypeVehicule] = useState<VehiculeHuile>(VEHICULES_HUILE[0]);
   const [immatriculation, setImmatriculation] = useState('');
   const [poidsCharge, setPoidsCharge] = useState('');
   const [poidsVide, setPoidsVide] = useState('');
@@ -36,7 +36,9 @@ export function VenteScreen() {
   }, [poidsCharge, poidsVide]);
 
   const prixNum = parseFloat(prixLitre) || 0;
+  const prixTransportNum = parseFloat(prixTransportHuile) || 0;
   const montant = Math.round(netVente * prixNum);
+  const montantTransport = Math.round(netVente * prixTransportNum);
 
   const canSubmit =
     !!client.trim() && netVente > 0 && !!chauffeur.trim() && !!immatriculation.trim() && !!numTicketPesee.trim();
@@ -54,6 +56,7 @@ export function VenteScreen() {
         poidsCharge: parseFloat(poidsCharge),
         poidsVide: parseFloat(poidsVide),
         prixLitre: prixNum,
+        prixTransportKg: prixTransportNum,
       });
       setLastVente(ticket);
       setClient('');
@@ -84,7 +87,12 @@ export function VenteScreen() {
         </View>
       </View>
 
-      <VehiculePicker value={typeVehicule} onChange={(v) => setTypeVehicule(v as Vehicule)} color={colors.oil} />
+      <VehiculePicker
+        value={typeVehicule}
+        onChange={(v) => setTypeVehicule(v as VehiculeHuile)}
+        options={VEHICULES_HUILE}
+        color={colors.oil}
+      />
 
       <View style={styles.grid2}>
         <ScaleInput label="Poids en charge (kg)" value={poidsCharge} onChange={setPoidsCharge} color={colors.oil} />
@@ -107,10 +115,33 @@ export function VenteScreen() {
         )}
       </View>
 
+      <View style={styles.priceBox}>
+        <Text style={styles.netLabel}>Coût du transport d'huile (CFA/Kg)</Text>
+        {isManager ? (
+          <TextInput
+            value={prixTransportHuile}
+            onChangeText={setPrixTransportHuile}
+            keyboardType="numeric"
+            style={styles.priceInput}
+          />
+        ) : (
+          <View style={styles.lockedRow}>
+            <Lock size={14} color={colors.textFaint} />
+          </View>
+        )}
+      </View>
+
       {isManager && netVente > 0 && prixNum > 0 && (
         <View style={styles.montantRow}>
-          <Text style={styles.netLabel}>Montant</Text>
+          <Text style={styles.netLabel}>Montant vente d'huile</Text>
           <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
+        </View>
+      )}
+
+      {isManager && netVente > 0 && prixTransportNum > 0 && (
+        <View style={styles.montantRow}>
+          <Text style={styles.netLabel}>Coût de transport</Text>
+          <Text style={styles.montantValue}>{formatFCFA(montantTransport)}</Text>
         </View>
       )}
 

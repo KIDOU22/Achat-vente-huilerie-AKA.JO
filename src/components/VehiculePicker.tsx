@@ -2,14 +2,21 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
-import { VEHICULES } from '../domain/types';
 
-export function VehiculePicker({ value, onChange, color = colors.accent }: { value: string; onChange: (v: string) => void; color?: string }) {
+interface VehiculePickerProps {
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  color?: string;
+  label?: string;
+}
+
+export function VehiculePicker({ value, onChange, options, color = colors.accent, label = 'Type de véhicule' }: VehiculePickerProps) {
   return (
     <View>
-      <Text style={styles.label}>Type de véhicule</Text>
+      <Text style={styles.label}>{label}</Text>
       <View style={styles.grid}>
-        {VEHICULES.map((v) => {
+        {options.map((v) => {
           const active = v === value;
           return (
             <Pressable

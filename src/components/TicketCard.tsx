@@ -24,6 +24,7 @@ export function AchatTicketCard({ t, planteur }: { t: Pesee; planteur: Planteur 
       <Row label="Poids à vide" value={formatKg(t.poidsVide)} />
       <Row label="Poids net" value={formatKg(t.net)} bold />
       <Row label="Prix/kg" value={formatFCFA(t.prixKg)} />
+      {t.montantTransport > 0 && <Row label="Coût transport" value={formatFCFA(t.montantTransport)} />}
       <View style={[styles.statusPill, { backgroundColor: t.paye ? `${colors.frond}33` : `${colors.accent}33` }]}>
         <Text style={{ color: t.paye ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 12 }}>
           {t.paye ? 'Payé' : 'Impayé'}
@@ -49,6 +50,9 @@ export function VenteTicketCard({ t, isManager }: { t: Vente; isManager: boolean
       <Row label="Poids à vide" value={formatKg(t.poidsVide)} />
       <Row label="Poids net" value={formatKg(t.net)} bold />
       <Row label="Prix/litre" value={isManager ? formatFCFA(t.prixLitre) : '🔒 masqué'} />
+      {t.montantTransport > 0 && (
+        <Row label="Coût transport" value={isManager ? formatFCFA(t.montantTransport) : '🔒 masqué'} />
+      )}
     </View>
   );
 }

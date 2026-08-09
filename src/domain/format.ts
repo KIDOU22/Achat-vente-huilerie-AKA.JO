@@ -76,6 +76,8 @@ export interface Bucket {
   achatMontant: number;
   ventePoids: number;
   venteMontant: number;
+  transportRegimeMontant: number;
+  transportHuileMontant: number;
 }
 
 export function buildBuckets(period: Periode): Bucket[] {
@@ -90,6 +92,8 @@ export function buildBuckets(period: Periode): Bucket[] {
       achatMontant: 0,
       ventePoids: 0,
       venteMontant: 0,
+      transportRegimeMontant: 0,
+      transportHuileMontant: 0,
     });
     cursor = stepBack(cursor, period);
   }

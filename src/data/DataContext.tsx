@@ -14,6 +14,8 @@ interface DataContextValue {
   tonnageParPlanteur: Record<string, PlanteurTonnage>;
   prixKg: string;
   prixLitre: string;
+  prixTransportRegime: string;
+  prixTransportHuile: string;
   loading: boolean;
   refresh: () => Promise<void>;
   addPlanteur: (input: { nom: string; village: string; tel: string }) => Promise<Planteur>;
@@ -22,6 +24,8 @@ interface DataContextValue {
   togglePaye: (id: string, paye: boolean) => Promise<void>;
   setPrixKg: (value: string) => Promise<void>;
   setPrixLitre: (value: string) => Promise<void>;
+  setPrixTransportRegime: (value: string) => Promise<void>;
+  setPrixTransportHuile: (value: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -35,16 +39,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [tonnage, setTonnage] = useState<Record<string, PlanteurTonnage>>({});
   const [prixKg, setPrixKgState] = useState('115');
   const [prixLitre, setPrixLitreState] = useState('950');
+  const [prixTransportRegime, setPrixTransportRegimeState] = useState('10');
+  const [prixTransportHuile, setPrixTransportHuileState] = useState('10');
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [p, a, v, t, pk, pl] = await Promise.all([
+    const [p, a, v, t, pk, pl, ptr, pth] = await Promise.all([
       listPlanteurs(db),
       listPesees(db),
       listVentes(db),
       tonnageParPlanteur(db),
       getSetting(db, 'prixKg', '115'),
       getSetting(db, 'prixLitre', '950'),
+      getSetting(db, 'prixTransportRegime', '10'),
+      getSetting(db, 'prixTransportHuile', '10'),
     ]);
     setPlanteurs(p);
     setPesees(a);
@@ -52,6 +60,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTonnage(t);
     setPrixKgState(pk);
     setPrixLitreState(pl);
+    setPrixTransportRegimeState(ptr);
+    setPrixTransportHuileState(pth);
   }, [db]);
 
   useEffect(() => {
@@ -116,6 +126,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [db]
   );
 
+  const setPrixTransportRegime = useCallback(
+    async (value: string) => {
+      await setSetting(db, 'prixTransportRegime', value);
+      setPrixTransportRegimeState(value);
+    },
+    [db]
+  );
+
+  const setPrixTransportHuile = useCallback(
+    async (value: string) => {
+      await setSetting(db, 'prixTransportHuile', value);
+      setPrixTransportHuileState(value);
+    },
+    [db]
+  );
+
   const value = useMemo<DataContextValue>(
     () => ({
       planteurs,
@@ -124,6 +150,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       tonnageParPlanteur: tonnage,
       prixKg,
       prixLitre,
+      prixTransportRegime,
+      prixTransportHuile,
       loading,
       refresh,
       addPlanteur,
@@ -132,8 +160,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       togglePaye,
       setPrixKg,
       setPrixLitre,
+      setPrixTransportRegime,
+      setPrixTransportHuile,
     }),
-    [planteurs, pesees, ventes, tonnage, prixKg, prixLitre, loading, refresh, addPlanteur, enregistrerPesee, enregistrerVente, togglePaye, setPrixKg, setPrixLitre]
+    [
+      planteurs,
+      pesees,
+      ventes,
+      tonnage,
+      prixKg,
+      prixLitre,
+      prixTransportRegime,
+      prixTransportHuile,
+      loading,
+      refresh,
+      addPlanteur,
+      enregistrerPesee,
+      enregistrerVente,
+      togglePaye,
+      setPrixKg,
+      setPrixLitre,
+      setPrixTransportRegime,
+      setPrixTransportHuile,
+    ]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

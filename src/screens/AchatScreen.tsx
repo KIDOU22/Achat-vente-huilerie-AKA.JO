@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useAuth } from '../auth/AuthContext';
 import { AchatTicketCard } from '../components/TicketCard';
 import { PlanteurPicker } from '../components/PlanteurPicker';
 import { Button } from '../components/ui/Button';
@@ -10,18 +11,19 @@ import { TextField } from '../components/ui/TextField';
 import { VehiculePicker } from '../components/VehiculePicker';
 import { useAppData } from '../data/DataContext';
 import { formatFCFA, formatKg } from '../domain/format';
-import type { Pesee, Vehicule } from '../domain/types';
-import { VEHICULES } from '../domain/types';
+import type { Pesee, VehiculeRegime } from '../domain/types';
+import { VEHICULES_REGIME } from '../domain/types';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 export function AchatScreen() {
-  const { planteurs, enregistrerPesee, prixKg, setPrixKg } = useAppData();
+  const { isManager } = useAuth();
+  const { planteurs, enregistrerPesee, prixKg, setPrixKg, prixTransportRegime, setPrixTransportRegime } = useAppData();
 
   const [selectedPlanteur, setSelectedPlanteur] = useState(planteurs[0]?.id ?? '');
   const [numTicketPesee, setNumTicketPesee] = useState('');
   const [chauffeur, setChauffeur] = useState('');
-  const [typeVehicule, setTypeVehicule] = useState<Vehicule>(VEHICULES[0]);
+  const [typeVehicule, setTypeVehicule] = useState<VehiculeRegime>(VEHICULES_REGIME[0]);
   const [immatriculation, setImmatriculation] = useState('');
   const [origine, setOrigine] = useState('');
   const [poidsCharge, setPoidsCharge] = useState('');
@@ -36,7 +38,9 @@ export function AchatScreen() {
   }, [poidsCharge, poidsVide]);
 
   const prixNum = parseFloat(prixKg) || 0;
+  const prixTransportNum = parseFloat(prixTransportRegime) || 0;
   const montant = Math.round(netAchat * prixNum);
+  const montantTransport = Math.round(netAchat * prixTransportNum);
 
   const canSubmit =
     !!selectedPlanteur && netAchat > 0 && !!chauffeur.trim() && !!immatriculation.trim() && !!numTicketPesee.trim();
@@ -55,6 +59,7 @@ export function AchatScreen() {
         poidsCharge: parseFloat(poidsCharge),
         poidsVide: parseFloat(poidsVide),
         prixKg: prixNum,
+        prixTransportKg: prixTransportNum,
       });
       setLastTicket(ticket);
       setNumTicketPesee('');
@@ -100,7 +105,7 @@ export function AchatScreen() {
         </View>
       </View>
 
-      <VehiculePicker value={typeVehicule} onChange={(v) => setTypeVehicule(v as Vehicule)} />
+      <VehiculePicker value={typeVehicule} onChange={(v) => setTypeVehicule(v as VehiculeRegime)} options={VEHICULES_REGIME} />
 
       <View style={styles.grid2}>
         <ScaleInput label="Poids en charge (kg)" value={poidsCharge} onChange={setPoidsCharge} />
@@ -113,19 +118,39 @@ export function AchatScreen() {
       </View>
 
       <View style={styles.priceBox}>
-        <Text style={styles.netLabel}>Prix du jour (F/kg)</Text>
-        <TextInput
-          value={prixKg}
-          onChangeText={setPrixKg}
-          keyboardType="numeric"
-          style={styles.priceInput}
-        />
+        <Text style={styles.netLabel}>Prix du jour de régime (CFA/Kg)</Text>
+        {isManager ? (
+          <TextInput value={prixKg} onChangeText={setPrixKg} keyboardType="numeric" style={styles.priceInput} />
+        ) : (
+          <Text style={styles.priceReadOnly}>{formatFCFA(prixNum)}</Text>
+        )}
+      </View>
+
+      <View style={styles.priceBox}>
+        <Text style={styles.netLabel}>Coût du transport de régime (CFA/Kg)</Text>
+        {isManager ? (
+          <TextInput
+            value={prixTransportRegime}
+            onChangeText={setPrixTransportRegime}
+            keyboardType="numeric"
+            style={styles.priceInput}
+          />
+        ) : (
+          <Text style={styles.priceReadOnly}>{formatFCFA(prixTransportNum)}</Text>
+        )}
       </View>
 
       {netAchat > 0 && prixNum > 0 && (
         <View style={styles.montantRow}>
-          <Text style={styles.netLabel}>Montant à payer</Text>
+          <Text style={styles.netLabel}>Montant régime de palme</Text>
           <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
+        </View>
+      )}
+
+      {netAchat > 0 && prixTransportNum > 0 && (
+        <View style={styles.montantRow}>
+          <Text style={styles.netLabel}>Coût de transport</Text>
+          <Text style={styles.montantValue}>{formatFCFA(montantTransport)}</Text>
         </View>
       )}
 
@@ -174,6 +199,11 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     minWidth: 80,
     paddingVertical: 0,
+  },
+  priceReadOnly: {
+    fontFamily: fonts.monoSemiBold,
+    fontSize: 16,
+    color: colors.amber,
   },
   montantRow: {
     flexDirection: 'row',

@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS pesees (
   net REAL NOT NULL,
   prix_kg REAL NOT NULL,
   montant REAL NOT NULL,
+  prix_transport_kg REAL NOT NULL DEFAULT 0,
+  montant_transport REAL NOT NULL DEFAULT 0,
   paye INTEGER NOT NULL DEFAULT 0,
   ts INTEGER NOT NULL,
   created_by TEXT NOT NULL
@@ -60,6 +62,8 @@ CREATE TABLE IF NOT EXISTS ventes (
   net REAL NOT NULL,
   prix_litre REAL NOT NULL,
   montant REAL NOT NULL,
+  prix_transport_kg REAL NOT NULL DEFAULT 0,
+  montant_transport REAL NOT NULL DEFAULT 0,
   ts INTEGER NOT NULL,
   created_by TEXT NOT NULL
 );
@@ -85,7 +89,26 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
 
 export async function migrate(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(SCHEMA_SQL);
+  await ensureColumn(db, 'pesees', 'prix_transport_kg', 'REAL NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'pesees', 'montant_transport', 'REAL NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'ventes', 'prix_transport_kg', 'REAL NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'ventes', 'montant_transport', 'REAL NOT NULL DEFAULT 0');
   await seedIfEmpty(db);
+}
+
+// Ajoute une colonne manquante sur une base existante (installations déjà en place avant cette version du schéma).
+async function ensureColumn(db: SQLiteDatabase, table: string, column: string, definition: string): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!columns.some((c) => c.name === column)) {
+    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+async function seedSettingIfMissing(db: SQLiteDatabase, key: string, value: string): Promise<void> {
+  const existing = await db.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', key);
+  if (!existing) {
+    await db.runAsync('INSERT INTO settings (key, value) VALUES (?, ?)', key, value);
+  }
 }
 
 async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
@@ -132,9 +155,8 @@ async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
     }
   }
 
-  const settingsCount = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM settings');
-  if (!settingsCount || settingsCount.count === 0) {
-    await db.runAsync('INSERT INTO settings (key, value) VALUES (?, ?)', 'prixKg', '115');
-    await db.runAsync('INSERT INTO settings (key, value) VALUES (?, ?)', 'prixLitre', '950');
-  }
+  await seedSettingIfMissing(db, 'prixKg', '115');
+  await seedSettingIfMissing(db, 'prixLitre', '950');
+  await seedSettingIfMissing(db, 'prixTransportRegime', '10');
+  await seedSettingIfMissing(db, 'prixTransportHuile', '10');
 }

@@ -1,7 +1,10 @@
 export type Role = 'gerant' | 'agent';
 
-export const VEHICULES = ['Kia', 'Tricycle', 'Tracteur', 'Remorque benne'] as const;
-export type Vehicule = (typeof VEHICULES)[number];
+export const VEHICULES_REGIME = ['Kia', 'Tricycle', 'Tracteur', 'Remorque benne'] as const;
+export type VehiculeRegime = (typeof VEHICULES_REGIME)[number];
+
+export const VEHICULES_HUILE = ['Citerne client', 'Citerne louée'] as const;
+export type VehiculeHuile = (typeof VEHICULES_HUILE)[number];
 
 export type Periode = 'jour' | 'semaine' | 'mois' | 'annee';
 export type Metrique = 'poids' | 'montant';
@@ -38,6 +41,8 @@ export interface Pesee {
   net: number;
   prixKg: number;
   montant: number;
+  prixTransportKg: number;
+  montantTransport: number;
   paye: boolean;
   ts: number;
   createdBy: string;
@@ -56,6 +61,8 @@ export interface Vente {
   net: number;
   prixLitre: number;
   montant: number;
+  prixTransportKg: number;
+  montantTransport: number;
   ts: number;
   createdBy: string;
 }

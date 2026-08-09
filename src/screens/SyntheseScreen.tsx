@@ -48,6 +48,7 @@ function SyntheseContent() {
       if (b) {
         b.achatPoids += p.net;
         b.achatMontant += p.montant;
+        b.transportRegimeMontant += p.montantTransport;
       }
     }
     for (const v of ventes) {
@@ -56,6 +57,7 @@ function SyntheseContent() {
       if (b) {
         b.ventePoids += v.net;
         b.venteMontant += v.montant;
+        b.transportHuileMontant += v.montantTransport;
       }
     }
     return Array.from(map.values());
@@ -66,8 +68,14 @@ function SyntheseContent() {
     achatMontant: 0,
     ventePoids: 0,
     venteMontant: 0,
+    transportRegimeMontant: 0,
+    transportHuileMontant: 0,
   };
-  const solde = currentBucket.venteMontant - currentBucket.achatMontant;
+  const solde =
+    currentBucket.venteMontant -
+    currentBucket.achatMontant -
+    currentBucket.transportRegimeMontant -
+    currentBucket.transportHuileMontant;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
@@ -91,19 +99,30 @@ function SyntheseContent() {
 
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { borderColor: `${colors.accent}44` }]}>
-          <Text style={styles.statLabel}>Achats — {PERIODE_LABELS[periode]}</Text>
+          <Text style={styles.statLabel}>Achat régime — {PERIODE_LABELS[periode]}</Text>
           <Text style={[styles.statBig, { color: colors.accent }]}>{formatTonnes(currentBucket.achatPoids)}</Text>
           <Text style={styles.statSmall}>{formatFCFA(currentBucket.achatMontant)}</Text>
         </View>
         <View style={[styles.statCard, { borderColor: `${colors.oil}44` }]}>
-          <Text style={styles.statLabel}>Ventes — {PERIODE_LABELS[periode]}</Text>
+          <Text style={styles.statLabel}>Vente huile — {PERIODE_LABELS[periode]}</Text>
           <Text style={[styles.statBig, { color: colors.oil }]}>{formatTonnes(currentBucket.ventePoids)}</Text>
           <Text style={styles.statSmall}>{formatFCFA(currentBucket.venteMontant)}</Text>
         </View>
       </View>
 
+      <View style={styles.statsGrid}>
+        <View style={[styles.statCard, { borderColor: `${colors.frond}44` }]}>
+          <Text style={styles.statLabel}>Transport régime — {PERIODE_LABELS[periode]}</Text>
+          <Text style={[styles.statBig, { color: colors.frond }]}>{formatFCFA(currentBucket.transportRegimeMontant)}</Text>
+        </View>
+        <View style={[styles.statCard, { borderColor: `${colors.amber}44` }]}>
+          <Text style={styles.statLabel}>Transport huile — {PERIODE_LABELS[periode]}</Text>
+          <Text style={[styles.statBig, { color: colors.amber }]}>{formatFCFA(currentBucket.transportHuileMontant)}</Text>
+        </View>
+      </View>
+
       <View style={styles.soldeBox}>
-        <Text style={styles.soldeLabel}>Solde (ventes − achats), {PERIODE_LABELS[periode]}</Text>
+        <Text style={styles.soldeLabel}>Solde (vente huile − achat régime − transports), {PERIODE_LABELS[periode]}</Text>
         <Text style={[styles.soldeValue, { color: solde >= 0 ? colors.frond : colors.accent }]}>{formatFCFA(solde)}</Text>
       </View>
 
