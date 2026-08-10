@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { TextField } from '../components/ui/TextField';
@@ -26,6 +26,9 @@ export function LoginScreen() {
     setError('');
     setIdentifiant('');
     setCode('');
+    if (result.syncError) {
+      Alert.alert('Synchro cloud indisponible', result.syncError);
+    }
   }
 
   return (

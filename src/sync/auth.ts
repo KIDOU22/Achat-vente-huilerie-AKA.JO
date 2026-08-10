@@ -23,11 +23,17 @@ interface SyncSignInInput {
   role: Role;
 }
 
+export interface SyncSignInResult {
+  ok: boolean;
+  error?: string;
+}
+
 // Best-effort : connecte (ou crée si première fois) la session cloud correspondant à
 // l'utilisateur qui vient de se connecter localement avec succès. N'échoue jamais
-// bruyamment — l'app reste utilisable hors-ligne si Supabase n'est pas joignable.
-export async function syncSignIn({ identifiant, code, nom, role }: SyncSignInInput): Promise<boolean> {
-  if (!supabase) return false;
+// bruyamment sur la connexion locale — l'app reste utilisable hors-ligne si Supabase
+// n'est pas joignable — mais renvoie un message d'erreur exploitable pour diagnostic.
+export async function syncSignIn({ identifiant, code, nom, role }: SyncSignInInput): Promise<SyncSignInResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré (variables .env absentes du build).' };
 
   const email = deriveEmail(identifiant);
   const password = derivePassword(identifiant, code);
@@ -35,26 +41,33 @@ export async function syncSignIn({ identifiant, code, nom, role }: SyncSignInInp
   try {
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (!signInError && signInData.user) {
-      await upsertOwnProfile(signInData.user.id, identifiant, nom, role);
-      return true;
+      const profileError = await upsertOwnProfile(signInData.user.id, identifiant, nom, role);
+      if (profileError) return { ok: false, error: `Profil non enregistré : ${profileError}` };
+      return { ok: true };
     }
 
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
     if (signUpError || !signUpData.user) {
-      console.warn('[sync] Échec connexion/inscription Supabase :', signUpError?.message);
-      return false;
+      const message = signUpError?.message ?? 'Réponse invalide (aucun utilisateur créé).';
+      console.warn('[sync] Échec connexion/inscription Supabase :', message);
+      return { ok: false, error: `Inscription échouée : ${message}` };
     }
-    await upsertOwnProfile(signUpData.user.id, identifiant, nom, role);
-    return true;
+    const profileError = await upsertOwnProfile(signUpData.user.id, identifiant, nom, role);
+    if (profileError) return { ok: false, error: `Profil non enregistré : ${profileError}` };
+    return { ok: true };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.warn('[sync] syncSignIn a échoué (hors-ligne ?) :', err);
-    return false;
+    return { ok: false, error: `Exception : ${message}` };
   }
 }
 
-async function upsertOwnProfile(id: string, identifiant: string, nom: string, role: Role): Promise<void> {
-  if (!supabase) return;
-  await supabase.from('profiles').upsert({ id, identifiant: identifiant.trim().toLowerCase(), nom, role, actif: true });
+async function upsertOwnProfile(id: string, identifiant: string, nom: string, role: Role): Promise<string | undefined> {
+  if (!supabase) return undefined;
+  const { error } = await supabase
+    .from('profiles')
+    .upsert({ id, identifiant: identifiant.trim().toLowerCase(), nom, role, actif: true });
+  return error?.message;
 }
 
 export async function syncSignOut(): Promise<void> {

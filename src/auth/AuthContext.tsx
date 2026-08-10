@@ -11,7 +11,7 @@ interface AuthContextValue {
   currentUser: User | null;
   isManager: boolean;
   isLoading: boolean;
-  login: (identifiant: string, code: string) => Promise<{ ok: boolean; error?: string }>;
+  login: (identifiant: string, code: string) => Promise<{ ok: boolean; error?: string; syncError?: string }>;
   logout: () => Promise<void>;
   refreshCurrentUser: () => Promise<void>;
 }
@@ -56,10 +56,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setCurrentUser(user);
       await SecureStore.setItemAsync(SESSION_KEY, user.id);
-      // Best-effort : établit/crée la session cloud correspondante pour la synchro.
-      // N'affecte jamais le résultat de la connexion locale (fonctionne hors-ligne).
-      syncSignIn({ identifiant, code, nom: user.nom, role: user.role }).catch(() => {});
-      return { ok: true };
+      // Établit/crée la session cloud correspondante pour la synchro. N'affecte jamais
+      // le résultat de la connexion locale (fonctionne hors-ligne) — mais le message
+      // d'erreur éventuel est remonté pour pouvoir diagnostiquer un échec de synchro.
+      const syncResult = await syncSignIn({ identifiant, code, nom: user.nom, role: user.role }).catch((err) => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      }));
+      return { ok: true, syncError: syncResult.ok ? undefined : syncResult.error };
     },
     [db]
   );
