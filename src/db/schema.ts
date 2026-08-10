@@ -85,6 +85,35 @@ CREATE TABLE IF NOT EXISTS audit_log (
   details TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
+
+CREATE TABLE IF NOT EXISTS caisses (
+  id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('principale', 'secondaire')),
+  user_id TEXT,
+  owner_identifiant TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_caisses_user ON caisses(user_id);
+
+CREATE TABLE IF NOT EXISTS mouvements_caisse (
+  id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('allocation', 'depense', 'retour', 'transfert')),
+  caisse_from_id TEXT,
+  caisse_to_id TEXT,
+  montant REAL NOT NULL,
+  motif TEXT NOT NULL DEFAULT '',
+  statut TEXT NOT NULL CHECK (statut IN ('en_attente', 'validee', 'rejetee')),
+  pesee_id TEXT,
+  created_by TEXT NOT NULL,
+  created_by_nom TEXT NOT NULL,
+  validated_by TEXT,
+  validated_by_nom TEXT,
+  ts INTEGER NOT NULL,
+  validated_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_mouvements_ts ON mouvements_caisse(ts);
+CREATE INDEX IF NOT EXISTS idx_mouvements_from ON mouvements_caisse(caisse_from_id);
+CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id);
 `;
 
 export async function migrate(db: SQLiteDatabase): Promise<void> {
@@ -93,7 +122,15 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'pesees', 'montant_transport', 'REAL NOT NULL DEFAULT 0');
   await ensureColumn(db, 'ventes', 'prix_transport_kg', 'REAL NOT NULL DEFAULT 0');
   await ensureColumn(db, 'ventes', 'montant_transport', 'REAL NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'pesees', 'annulee', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'pesees', 'annulee_par', 'TEXT');
+  await ensureColumn(db, 'pesees', 'motif_annulation', 'TEXT');
+  await ensureColumn(db, 'ventes', 'annulee', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'ventes', 'annulee_par', 'TEXT');
+  await ensureColumn(db, 'ventes', 'motif_annulation', 'TEXT');
+  await ensureColumn(db, 'caisses', 'owner_identifiant', 'TEXT');
   await seedIfEmpty(db);
+  await ensureCaissesForExistingUsers(db);
 }
 
 // Ajoute une colonne manquante sur une base existante (installations déjà en place avant cette version du schéma).
@@ -158,4 +195,33 @@ async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
   await seedSettingIfMissing(db, 'prixKg', '115');
   await seedSettingIfMissing(db, 'prixLitre', '950');
   await seedSettingIfMissing(db, 'prixTransportRegime', '10');
+
+  const caissePrincipaleCount = await db.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM caisses WHERE type = 'principale'"
+  );
+  if (!caissePrincipaleCount || caissePrincipaleCount.count === 0) {
+    await db.runAsync(
+      "INSERT INTO caisses (id, type, user_id, created_at) VALUES (?, 'principale', NULL, ?)",
+      uid(),
+      Date.now()
+    );
+  }
+}
+
+// Crée la caisse secondaire manquante pour tout utilisateur qui n'en a pas encore
+// (installations mises à jour depuis une version antérieure à cette fonctionnalité).
+async function ensureCaissesForExistingUsers(db: SQLiteDatabase): Promise<void> {
+  const users = await db.getAllAsync<{ id: string; identifiant: string }>('SELECT id, identifiant FROM users');
+  for (const u of users) {
+    const existing = await db.getFirstAsync<{ id: string }>('SELECT id FROM caisses WHERE user_id = ?', u.id);
+    if (!existing) {
+      await db.runAsync(
+        "INSERT INTO caisses (id, type, user_id, owner_identifiant, created_at) VALUES (?, 'secondaire', ?, ?, ?)",
+        uid(),
+        u.id,
+        u.identifiant.trim().toLowerCase(),
+        Date.now()
+      );
+    }
+  }
 }

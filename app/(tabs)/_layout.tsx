@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { BarChart3, ClipboardList, Droplet, Scale, Users } from 'lucide-react-native';
+import { BarChart3, ClipboardList, Droplet, Scale, Users, Wallet } from 'lucide-react-native';
 import React from 'react';
 import { AppHeader } from '../../src/components/AppHeader';
 import { colors } from '../../src/theme/colors';
@@ -45,6 +45,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="historique"
         options={{ title: 'Historique', tabBarIcon: ({ color, size }) => <ClipboardList color={color} size={size} /> }}
+      />
+      <Tabs.Screen
+        name="caisse"
+        options={{ title: 'Caisse', tabBarIcon: ({ color, size }) => <Wallet color={color} size={size} /> }}
       />
     </Tabs>
   );

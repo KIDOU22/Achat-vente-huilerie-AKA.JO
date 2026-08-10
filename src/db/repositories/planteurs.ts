@@ -46,7 +46,7 @@ export interface PlanteurTonnage {
 
 export async function tonnageParPlanteur(db: SQLiteDatabase): Promise<Record<string, PlanteurTonnage>> {
   const rows = await db.getAllAsync<{ planteur_id: string; total_net: number; livraisons: number }>(
-    'SELECT planteur_id, SUM(net) as total_net, COUNT(*) as livraisons FROM pesees GROUP BY planteur_id'
+    'SELECT planteur_id, SUM(net) as total_net, COUNT(*) as livraisons FROM pesees WHERE annulee = 0 GROUP BY planteur_id'
   );
   const map: Record<string, PlanteurTonnage> = {};
   for (const r of rows) {

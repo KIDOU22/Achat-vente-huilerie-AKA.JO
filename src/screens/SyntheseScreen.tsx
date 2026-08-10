@@ -43,6 +43,7 @@ function SyntheseContent() {
     const buckets = buildBuckets(periode);
     const map = new Map(buckets.map((b) => [b.key, { ...b }]));
     for (const p of pesees) {
+      if (p.annulee) continue;
       const k = periodKey(new Date(p.ts), periode);
       const b = map.get(k);
       if (b) {
@@ -52,6 +53,7 @@ function SyntheseContent() {
       }
     }
     for (const v of ventes) {
+      if (v.annulee) continue;
       const k = periodKey(new Date(v.ts), periode);
       const b = map.get(k);
       if (b) {

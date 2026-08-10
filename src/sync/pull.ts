@@ -13,11 +13,14 @@ export async function pullAll(db: SQLiteDatabase): Promise<void> {
   if (!session) return;
 
   try {
-    // Ordre important : les pesées référencent un planteur local (clé étrangère).
+    // Ordre important : les pesées référencent un planteur local (clé étrangère), et
+    // les mouvements référencent des caisses locales (clé étrangère implicite).
     await pullPlanteurs(db);
     await pullPesees(db);
     await pullVentes(db);
     await pullSettings(db);
+    await pullCaisses(db);
+    await pullMouvements(db);
   } catch (err) {
     console.warn('[sync] pullAll a échoué :', err);
   }
@@ -47,10 +50,12 @@ async function pullPesees(db: SQLiteDatabase): Promise<void> {
   for (const row of data) {
     await db.runAsync(
       `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, type_vehicule, immatriculation, origine,
-         poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye, ts, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye, ts, created_by,
+         annulee, annulee_par, motif_annulation)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         paye = excluded.paye, montant = excluded.montant, montant_transport = excluded.montant_transport`,
+         paye = excluded.paye, montant = excluded.montant, montant_transport = excluded.montant_transport,
+         annulee = excluded.annulee, annulee_par = excluded.annulee_par, motif_annulation = excluded.motif_annulation`,
       row.id,
       row.num,
       row.num_ticket,
@@ -68,7 +73,10 @@ async function pullPesees(db: SQLiteDatabase): Promise<void> {
       row.montant_transport,
       row.paye ? 1 : 0,
       new Date(row.ts).getTime(),
-      row.created_by
+      row.created_by,
+      row.annulee ? 1 : 0,
+      row.annulee_par,
+      row.motif_annulation
     );
   }
 }
@@ -83,9 +91,11 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
   for (const row of data) {
     await db.runAsync(
       `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation,
-         poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, ts, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET montant = excluded.montant, montant_transport = excluded.montant_transport`,
+         poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, ts, created_by,
+         annulee, annulee_par, motif_annulation)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET montant = excluded.montant, montant_transport = excluded.montant_transport,
+         annulee = excluded.annulee, annulee_par = excluded.annulee_par, motif_annulation = excluded.motif_annulation`,
       row.id,
       row.num,
       row.num_ticket,
@@ -101,7 +111,65 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
       row.prix_transport_kg,
       row.montant_transport,
       new Date(row.ts).getTime(),
-      row.created_by
+      row.created_by,
+      row.annulee ? 1 : 0,
+      row.annulee_par,
+      row.motif_annulation
+    );
+  }
+}
+
+async function pullCaisses(db: SQLiteDatabase): Promise<void> {
+  if (!supabase) return;
+  const { data, error } = await supabase.from('caisses').select('*');
+  if (error || !data) return;
+  for (const row of data) {
+    const localUser = row.owner_identifiant
+      ? await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM users WHERE lower(identifiant) = lower(?)',
+          row.owner_identifiant
+        )
+      : null;
+    await db.runAsync(
+      `INSERT INTO caisses (id, type, user_id, owner_identifiant, created_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         owner_identifiant = excluded.owner_identifiant,
+         user_id = COALESCE(excluded.user_id, caisses.user_id)`,
+      row.id,
+      row.type,
+      localUser?.id ?? null,
+      row.owner_identifiant,
+      new Date(row.created_at).getTime()
+    );
+  }
+}
+
+async function pullMouvements(db: SQLiteDatabase): Promise<void> {
+  if (!supabase) return;
+  const { data, error } = await supabase.from('mouvements_caisse').select('*');
+  if (error || !data) return;
+  for (const row of data) {
+    await db.runAsync(
+      `INSERT INTO mouvements_caisse
+         (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         statut = excluded.statut, validated_by = excluded.validated_by,
+         validated_by_nom = excluded.validated_by_nom, validated_at = excluded.validated_at`,
+      row.id,
+      row.type,
+      row.caisse_from_id,
+      row.caisse_to_id,
+      row.montant,
+      row.motif,
+      row.statut,
+      row.pesee_id,
+      row.created_by,
+      row.created_by_nom,
+      row.validated_by,
+      row.validated_by_nom,
+      new Date(row.ts).getTime(),
+      row.validated_at ? new Date(row.validated_at).getTime() : null
     );
   }
 }

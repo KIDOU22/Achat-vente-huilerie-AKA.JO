@@ -46,6 +46,9 @@ export interface Pesee {
   paye: boolean;
   ts: number;
   createdBy: string;
+  annulee: boolean;
+  annuleePar: string | null;
+  motifAnnulation: string | null;
 }
 
 export interface Vente {
@@ -65,6 +68,9 @@ export interface Vente {
   montantTransport: number;
   ts: number;
   createdBy: string;
+  annulee: boolean;
+  annuleePar: string | null;
+  motifAnnulation: string | null;
 }
 
 export interface AuditEntry {
@@ -81,4 +87,41 @@ export interface AuditEntry {
 export const ROLE_LABELS: Record<Role, string> = {
   gerant: 'Gérant',
   agent: 'Agent pont-bascule',
+};
+
+export type CaisseType = 'principale' | 'secondaire';
+
+export interface Caisse {
+  id: string;
+  type: CaisseType;
+  userId: string | null;
+  ownerIdentifiant: string | null;
+  createdAt: number;
+}
+
+export type MouvementType = 'allocation' | 'depense' | 'retour' | 'transfert';
+export type MouvementStatut = 'en_attente' | 'validee' | 'rejetee';
+
+export interface MouvementCaisse {
+  id: string;
+  type: MouvementType;
+  caisseFromId: string | null;
+  caisseToId: string | null;
+  montant: number;
+  motif: string;
+  statut: MouvementStatut;
+  peseeId: string | null;
+  createdBy: string;
+  createdByNom: string;
+  validatedBy: string | null;
+  validatedByNom: string | null;
+  ts: number;
+  validatedAt: number | null;
+}
+
+export const MOUVEMENT_TYPE_LABELS: Record<MouvementType, string> = {
+  allocation: 'Allocation',
+  depense: 'Dépense',
+  retour: 'Retour caisse principale',
+  transfert: 'Transfert',
 };

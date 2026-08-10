@@ -20,6 +20,9 @@ interface VenteRow {
   montant_transport: number;
   ts: number;
   created_by: string;
+  annulee: number;
+  annulee_par: string | null;
+  motif_annulation: string | null;
 }
 
 function toVente(row: VenteRow): Vente {
@@ -40,6 +43,9 @@ function toVente(row: VenteRow): Vente {
     montantTransport: row.montant_transport,
     ts: row.ts,
     createdBy: row.created_by,
+    annulee: row.annulee === 1,
+    annuleePar: row.annulee_par,
+    motifAnnulation: row.motif_annulation,
   };
 }
 
@@ -118,5 +124,32 @@ export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): 
     montantTransport,
     ts,
     createdBy: input.userId,
+    annulee: false,
+    annuleePar: null,
+    motifAnnulation: null,
   };
+}
+
+// Annulation réservée au Gérant : conserve la vente (traçabilité) mais l'exclut des
+// totaux. N'est jamais supprimée de la base.
+export async function annulerVente(
+  db: SQLiteDatabase,
+  id: string,
+  motif: string,
+  actor: { userId: string; userNom: string }
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE ventes SET annulee = 1, annulee_par = ?, motif_annulation = ? WHERE id = ?',
+    actor.userId,
+    motif.trim(),
+    id
+  );
+  await logAudit(db, {
+    userId: actor.userId,
+    userNom: actor.userNom,
+    action: 'annuler',
+    entity: 'vente',
+    entityId: id,
+    details: motif.trim(),
+  });
 }

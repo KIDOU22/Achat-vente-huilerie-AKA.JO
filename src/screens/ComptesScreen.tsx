@@ -7,9 +7,11 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { TextField } from '../components/ui/TextField';
 import { changeUserRole, createUser, listUsers, revokeUser } from '../db/repositories/users';
+import { getCaisseForUser } from '../db/repositories/caisses';
 import { logAudit } from '../db/repositories/audit';
 import { ROLE_LABELS, type Role, type User } from '../domain/types';
 import { syncUpdateProfile } from '../sync/auth';
+import { pushCaisse } from '../sync/push';
 import { colors, roleColors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -60,6 +62,8 @@ export function ComptesScreen() {
         return;
       }
       const user = await createUser(db, { nom, identifiant, code, role });
+      const caisse = await getCaisseForUser(db, user.id);
+      if (caisse) pushCaisse(caisse).catch(() => {});
       await logAudit(db, {
         userId: currentUser.id,
         userNom: currentUser.nom,

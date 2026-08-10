@@ -57,6 +57,13 @@ export async function createUser(
     input.role,
     createdAt
   );
+  await db.runAsync(
+    "INSERT INTO caisses (id, type, user_id, owner_identifiant, created_at) VALUES (?, 'secondaire', ?, ?, ?)",
+    uid(),
+    id,
+    input.identifiant.trim().toLowerCase(),
+    createdAt
+  );
   return { id, identifiant: input.identifiant.trim(), codeHash, nom: input.nom.trim(), role: input.role, actif: true, createdAt };
 }
 

@@ -19,8 +19,14 @@ export function AppHeader() {
   const insets = useSafeAreaInsets();
 
   const today = todayKey();
-  const todayPesees = useMemo(() => pesees.filter((p) => new Date(p.ts).toDateString() === today), [pesees, today]);
-  const todayVentes = useMemo(() => ventes.filter((v) => new Date(v.ts).toDateString() === today), [ventes, today]);
+  const todayPesees = useMemo(
+    () => pesees.filter((p) => !p.annulee && new Date(p.ts).toDateString() === today),
+    [pesees, today]
+  );
+  const todayVentes = useMemo(
+    () => ventes.filter((v) => !v.annulee && new Date(v.ts).toDateString() === today),
+    [ventes, today]
+  );
   const totalTonnageJour = todayPesees.reduce((s, p) => s + p.net, 0);
   const totalAchatJour = todayPesees.reduce((s, p) => s + p.montant, 0);
   const totalVenteJour = todayVentes.reduce((s, v) => s + v.montant, 0);

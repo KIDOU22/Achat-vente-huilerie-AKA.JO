@@ -11,6 +11,8 @@ export function subscribeRealtime(onChange: () => void): (() => void) | undefine
     .on('postgres_changes', { event: '*', schema: 'public', table: 'planteurs' }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pesees' }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ventes' }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'caisses' }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvements_caisse' }, onChange)
     .subscribe();
 
   return () => {

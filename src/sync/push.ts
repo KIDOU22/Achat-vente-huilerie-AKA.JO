@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { Pesee, Planteur, Vente } from '../domain/types';
+import type { Caisse, MouvementCaisse, MouvementStatut, Pesee, Planteur, Vente } from '../domain/types';
 
 // Toutes les fonctions ci-dessous sont "best-effort" : si Supabase n'est pas
 // configuré, si l'appareil est hors-ligne, ou si la requête échoue pour toute
@@ -45,6 +45,9 @@ export async function pushPesee(p: Pesee): Promise<void> {
       paye: p.paye,
       ts: new Date(p.ts).toISOString(),
       created_by: p.createdBy,
+      annulee: p.annulee,
+      annulee_par: p.annuleePar,
+      motif_annulation: p.motifAnnulation,
     });
   } catch (err) {
     console.warn('[sync] pushPesee a échoué :', err);
@@ -71,6 +74,9 @@ export async function pushVente(v: Vente): Promise<void> {
       montant_transport: v.montantTransport,
       ts: new Date(v.ts).toISOString(),
       created_by: v.createdBy,
+      annulee: v.annulee,
+      annulee_par: v.annuleePar,
+      motif_annulation: v.motifAnnulation,
     });
   } catch (err) {
     console.warn('[sync] pushVente a échoué :', err);
@@ -92,5 +98,75 @@ export async function pushSetting(key: string, value: string): Promise<void> {
     await supabase.from('settings').upsert({ key, value });
   } catch (err) {
     console.warn('[sync] pushSetting a échoué :', err);
+  }
+}
+
+export async function pushCaisse(c: Caisse): Promise<void> {
+  if (!supabase || !UUID_RE.test(c.id)) return;
+  try {
+    await supabase.from('caisses').upsert({
+      id: c.id,
+      type: c.type,
+      owner_identifiant: c.ownerIdentifiant,
+      created_at: new Date(c.createdAt).toISOString(),
+    });
+  } catch (err) {
+    console.warn('[sync] pushCaisse a échoué :', err);
+  }
+}
+
+export async function pushMouvement(m: MouvementCaisse): Promise<void> {
+  if (!supabase || !UUID_RE.test(m.id)) return;
+  try {
+    await supabase.from('mouvements_caisse').upsert({
+      id: m.id,
+      type: m.type,
+      caisse_from_id: m.caisseFromId,
+      caisse_to_id: m.caisseToId,
+      montant: m.montant,
+      motif: m.motif,
+      statut: m.statut,
+      pesee_id: m.peseeId,
+      created_by: m.createdBy,
+      created_by_nom: m.createdByNom,
+      validated_by: m.validatedBy,
+      validated_by_nom: m.validatedByNom,
+      ts: new Date(m.ts).toISOString(),
+      validated_at: m.validatedAt ? new Date(m.validatedAt).toISOString() : null,
+    });
+  } catch (err) {
+    console.warn('[sync] pushMouvement a échoué :', err);
+  }
+}
+
+export async function pushMouvementStatus(
+  id: string,
+  statut: MouvementStatut,
+  validatedBy: string,
+  validatedByNom: string,
+  validatedAt: number
+): Promise<void> {
+  if (!supabase || !UUID_RE.test(id)) return;
+  try {
+    await supabase
+      .from('mouvements_caisse')
+      .update({
+        statut,
+        validated_by: validatedBy,
+        validated_by_nom: validatedByNom,
+        validated_at: new Date(validatedAt).toISOString(),
+      })
+      .eq('id', id);
+  } catch (err) {
+    console.warn('[sync] pushMouvementStatus a échoué :', err);
+  }
+}
+
+export async function pushDeleteMouvementForPesee(peseeId: string): Promise<void> {
+  if (!supabase || !UUID_RE.test(peseeId)) return;
+  try {
+    await supabase.from('mouvements_caisse').delete().eq('pesee_id', peseeId).eq('type', 'depense');
+  } catch (err) {
+    console.warn('[sync] pushDeleteMouvementForPesee a échoué :', err);
   }
 }

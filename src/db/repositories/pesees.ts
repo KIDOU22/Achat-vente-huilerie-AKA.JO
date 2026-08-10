@@ -22,6 +22,9 @@ interface PeseeRow {
   paye: number;
   ts: number;
   created_by: string;
+  annulee: number;
+  annulee_par: string | null;
+  motif_annulation: string | null;
 }
 
 function toPesee(row: PeseeRow): Pesee {
@@ -44,6 +47,9 @@ function toPesee(row: PeseeRow): Pesee {
     paye: row.paye === 1,
     ts: row.ts,
     createdBy: row.created_by,
+    annulee: row.annulee === 1,
+    annuleePar: row.annulee_par,
+    motifAnnulation: row.motif_annulation,
   };
 }
 
@@ -126,7 +132,34 @@ export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): 
     paye: false,
     ts,
     createdBy: input.userId,
+    annulee: false,
+    annuleePar: null,
+    motifAnnulation: null,
   };
+}
+
+// Annulation réservée au Gérant : conserve la pesée (traçabilité) mais l'exclut des
+// totaux. N'est jamais supprimée de la base.
+export async function annulerPesee(
+  db: SQLiteDatabase,
+  id: string,
+  motif: string,
+  actor: { userId: string; userNom: string }
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE pesees SET annulee = 1, annulee_par = ?, motif_annulation = ? WHERE id = ?',
+    actor.userId,
+    motif.trim(),
+    id
+  );
+  await logAudit(db, {
+    userId: actor.userId,
+    userNom: actor.userNom,
+    action: 'annuler',
+    entity: 'pesee',
+    entityId: id,
+    details: motif.trim(),
+  });
 }
 
 export async function togglePaye(
