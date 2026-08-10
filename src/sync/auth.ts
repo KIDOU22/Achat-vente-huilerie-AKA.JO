@@ -9,7 +9,7 @@ import type { Role } from '../domain/types';
 // session (jamais l'id local SQLite de l'utilisateur, qui vit dans un espace
 // d'identifiants totalement différent).
 function deriveEmail(identifiant: string): string {
-  return `${identifiant.trim().toLowerCase()}@akajo.local`;
+  return `${identifiant.trim().toLowerCase()}@akajo-sync.com`;
 }
 
 function derivePassword(identifiant: string, code: string): string {
