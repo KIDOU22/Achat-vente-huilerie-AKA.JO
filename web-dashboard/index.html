@@ -132,7 +132,7 @@ const fmtNum = (n) => Math.round(n || 0).toLocaleString('fr-FR');
 const fmtF = (n) => `${fmtNum(n)} F`;
 const fmtKg = (n) => `${fmtNum(n)} kg`;
 const fmtT = (kg) => `${((kg || 0) / 1000).toFixed(2)} t`;
-const deriveEmail = (id) => `${id.trim().toLowerCase()}@akajo-sync.com`;
+const deriveEmail = (id) => `akajo-${id.trim().toLowerCase()}@gmail.com`;
 const derivePassword = (id, code) => `akajo-${id.trim().toLowerCase()}-${code.trim()}-sync`;
 
 let currentRole = null;
