@@ -24,7 +24,7 @@ export async function pushPlanteur(p: Planteur): Promise<void> {
 }
 
 export async function pushPesee(p: Pesee): Promise<void> {
-  if (!supabase || !UUID_RE.test(p.id) || !UUID_RE.test(p.planteurId) || !UUID_RE.test(p.createdBy)) return;
+  if (!supabase || !UUID_RE.test(p.id) || !UUID_RE.test(p.planteurId)) return;
   try {
     await supabase.from('pesees').upsert({
       id: p.id,
@@ -52,7 +52,7 @@ export async function pushPesee(p: Pesee): Promise<void> {
 }
 
 export async function pushVente(v: Vente): Promise<void> {
-  if (!supabase || !UUID_RE.test(v.id) || !UUID_RE.test(v.createdBy)) return;
+  if (!supabase || !UUID_RE.test(v.id)) return;
   try {
     await supabase.from('ventes').upsert({
       id: v.id,
