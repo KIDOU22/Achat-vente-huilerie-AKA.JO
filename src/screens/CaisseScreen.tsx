@@ -13,7 +13,7 @@ import { MOUVEMENT_TYPE_LABELS, type Caisse, type MouvementCaisse, type User } f
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
-type FormKind = 'allouer' | 'depense' | 'retour' | 'transfert' | null;
+type FormKind = 'apport' | 'allouer' | 'depense' | 'retour' | 'transfert' | null;
 
 export function CaisseScreen() {
   const db = useSQLiteContext();
@@ -22,6 +22,7 @@ export function CaisseScreen() {
     caisses,
     mouvements,
     soldeCaisse,
+    enregistrerApport,
     allouerCaisse,
     enregistrerDepense,
     initierRetour,
@@ -71,7 +72,9 @@ export function CaisseScreen() {
     if (!montantNum || montantNum <= 0 || !form) return;
     setSaving(true);
     try {
-      if (form === 'allouer' && cibleCaisseId) {
+      if (form === 'apport' && principale) {
+        await enregistrerApport(principale.id, montantNum, motif);
+      } else if (form === 'allouer' && cibleCaisseId) {
         await allouerCaisse(cibleCaisseId, montantNum, motif);
       } else if (form === 'depense' && maCaisse) {
         if (!motif.trim()) return;
@@ -132,6 +135,9 @@ export function CaisseScreen() {
             <Text style={styles.soldeLabel}>Caisse principale</Text>
           </View>
           <Text style={[styles.soldeValue, { color: colors.oil }]}>{formatFCFA(soldeCaisse(principale.id))}</Text>
+          <View style={styles.actionsRow}>
+            <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.oil} />} onPress={() => setForm('apport')} />
+          </View>
         </Card>
       )}
 
@@ -195,6 +201,7 @@ export function CaisseScreen() {
       {form && (
         <Card style={{ gap: 10 }}>
           <Text style={styles.cardTitle}>
+            {form === 'apport' && 'Alimenter la caisse principale'}
             {form === 'allouer' && 'Allocation'}
             {form === 'depense' && 'Nouvelle dépense'}
             {form === 'retour' && 'Retour vers la caisse principale'}

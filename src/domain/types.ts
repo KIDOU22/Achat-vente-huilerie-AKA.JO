@@ -99,7 +99,7 @@ export interface Caisse {
   createdAt: number;
 }
 
-export type MouvementType = 'allocation' | 'depense' | 'retour' | 'transfert';
+export type MouvementType = 'allocation' | 'depense' | 'retour' | 'transfert' | 'apport';
 export type MouvementStatut = 'en_attente' | 'validee' | 'rejetee';
 
 export interface MouvementCaisse {
@@ -124,4 +124,5 @@ export const MOUVEMENT_TYPE_LABELS: Record<MouvementType, string> = {
   depense: 'Dépense',
   retour: 'Retour caisse principale',
   transfert: 'Transfert',
+  apport: 'Apport (dépôt)',
 };

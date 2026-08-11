@@ -97,7 +97,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_caisses_user ON caisses(user_id);
 
 CREATE TABLE IF NOT EXISTS mouvements_caisse (
   id TEXT PRIMARY KEY NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('allocation', 'depense', 'retour', 'transfert')),
+  type TEXT NOT NULL CHECK (type IN ('allocation', 'depense', 'retour', 'transfert', 'apport')),
   caisse_from_id TEXT,
   caisse_to_id TEXT,
   montant REAL NOT NULL,
@@ -118,6 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id);
 
 export async function migrate(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(SCHEMA_SQL);
+  await ensureMouvementsCaisseAllowsApport(db);
   await ensureColumn(db, 'pesees', 'prix_transport_kg', 'REAL NOT NULL DEFAULT 0');
   await ensureColumn(db, 'pesees', 'montant_transport', 'REAL NOT NULL DEFAULT 0');
   await ensureColumn(db, 'ventes', 'prix_transport_kg', 'REAL NOT NULL DEFAULT 0');
@@ -131,6 +132,44 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'caisses', 'owner_identifiant', 'TEXT');
   await seedIfEmpty(db);
   await ensureCaissesForExistingUsers(db);
+}
+
+// SQLite ne permet pas de modifier une contrainte CHECK existante avec ALTER TABLE :
+// sur une base créée avant l'ajout du type "apport", on recrée la table avec la
+// nouvelle contrainte et on recopie les données (sans risque, no-op si déjà à jour).
+async function ensureMouvementsCaisseAllowsApport(db: SQLiteDatabase): Promise<void> {
+  const row = await db.getFirstAsync<{ sql: string }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mouvements_caisse'"
+  );
+  if (!row || row.sql.includes('apport')) return;
+
+  await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_ts');
+  await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_from');
+  await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_to');
+  await db.execAsync('ALTER TABLE mouvements_caisse RENAME TO mouvements_caisse_old');
+  await db.execAsync(`
+    CREATE TABLE mouvements_caisse (
+      id TEXT PRIMARY KEY NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('allocation', 'depense', 'retour', 'transfert', 'apport')),
+      caisse_from_id TEXT,
+      caisse_to_id TEXT,
+      montant REAL NOT NULL,
+      motif TEXT NOT NULL DEFAULT '',
+      statut TEXT NOT NULL CHECK (statut IN ('en_attente', 'validee', 'rejetee')),
+      pesee_id TEXT,
+      created_by TEXT NOT NULL,
+      created_by_nom TEXT NOT NULL,
+      validated_by TEXT,
+      validated_by_nom TEXT,
+      ts INTEGER NOT NULL,
+      validated_at INTEGER
+    )
+  `);
+  await db.execAsync('INSERT INTO mouvements_caisse SELECT * FROM mouvements_caisse_old');
+  await db.execAsync('DROP TABLE mouvements_caisse_old');
+  await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_ts ON mouvements_caisse(ts)');
+  await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_from ON mouvements_caisse(caisse_from_id)');
+  await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id)');
 }
 
 // Ajoute une colonne manquante sur une base existante (installations déjà en place avant cette version du schéma).

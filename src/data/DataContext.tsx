@@ -13,6 +13,7 @@ import { annulerVente as annulerVenteRepo, createVente, listVentes, type CreateV
 import { getSetting, setSetting } from '../db/repositories/settings';
 import {
   allouer as allouerRepo,
+  enregistrerApport as enregistrerApportRepo,
   enregistrerDepense as enregistrerDepenseRepo,
   enregistrerDepensePesee,
   annulerDepensePesee,
@@ -62,6 +63,7 @@ interface DataContextValue {
   setPrixLitre: (value: string) => Promise<void>;
   setPrixTransportRegime: (value: string) => Promise<void>;
   soldeCaisse: (caisseId: string) => number;
+  enregistrerApport: (caisseId: string, montant: number, motif: string) => Promise<void>;
   allouerCaisse: (toCaisseId: string, montant: number, motif: string) => Promise<void>;
   enregistrerDepense: (caisseId: string, montant: number, motif: string) => Promise<void>;
   initierRetour: (caisseId: string, montant: number, motif: string) => Promise<void>;
@@ -272,6 +274,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const soldeCaisseFn = useCallback((caisseId: string) => soldeCaisse(caisseId, mouvements), [mouvements]);
 
+  const enregistrerApport = useCallback(
+    async (caisseId: string, montant: number, motif: string) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      const m = await enregistrerApportRepo(db, { caisseId, montant, motif, actor: { userId: currentUser.id, userNom: currentUser.nom } });
+      await refresh();
+      pushMouvement(m).catch(() => {});
+    },
+    [db, refresh, currentUser]
+  );
+
   const allouerCaisse = useCallback(
     async (toCaisseId: string, montant: number, motif: string) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
@@ -363,6 +375,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPrixLitre,
       setPrixTransportRegime,
       soldeCaisse: soldeCaisseFn,
+      enregistrerApport,
       allouerCaisse,
       enregistrerDepense,
       initierRetour,
@@ -392,6 +405,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPrixLitre,
       setPrixTransportRegime,
       soldeCaisseFn,
+      enregistrerApport,
       allouerCaisse,
       enregistrerDepense,
       initierRetour,

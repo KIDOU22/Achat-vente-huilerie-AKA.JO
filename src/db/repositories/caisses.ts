@@ -168,6 +168,34 @@ export async function allouer(
   return m;
 }
 
+// Apport (dépôt) : le Gérant injecte de l'argent externe (capital, retrait bancaire...)
+// directement dans une caisse — typiquement la caisse principale. Pas de caisse
+// source (l'argent vient de l'extérieur du système), effectif immédiatement.
+export async function enregistrerApport(
+  db: SQLiteDatabase,
+  input: { caisseId: string; montant: number; motif: string; actor: { userId: string; userNom: string } }
+): Promise<MouvementCaisse> {
+  const m = await insertMouvement(db, {
+    type: 'apport',
+    caisseFromId: null,
+    caisseToId: input.caisseId,
+    montant: input.montant,
+    motif: input.motif,
+    statut: 'validee',
+    createdBy: input.actor.userId,
+    createdByNom: input.actor.userNom,
+  });
+  await logAudit(db, {
+    userId: input.actor.userId,
+    userNom: input.actor.userNom,
+    action: 'apport_caisse',
+    entity: 'caisse',
+    entityId: input.caisseId,
+    details: `Apport de ${input.montant} F${input.motif ? ` — ${input.motif}` : ''}`,
+  });
+  return m;
+}
+
 // Dépense libre : débite directement la caisse de son propriétaire, effective immédiatement.
 export async function enregistrerDepense(
   db: SQLiteDatabase,
