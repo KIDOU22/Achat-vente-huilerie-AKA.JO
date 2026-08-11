@@ -1,4 +1,4 @@
-export type Role = 'gerant' | 'agent';
+export type Role = 'gerant' | 'dirigeant' | 'agent';
 
 export const VEHICULES_REGIME = ['Kia', 'Tricycle', 'Tracteur', 'Remorque benne'] as const;
 export type VehiculeRegime = (typeof VEHICULES_REGIME)[number];
@@ -87,6 +87,7 @@ export interface AuditEntry {
 
 export const ROLE_LABELS: Record<Role, string> = {
   gerant: 'Gérant',
+  dirigeant: 'Dirigeant',
   agent: 'Agent pont-bascule',
 };
 

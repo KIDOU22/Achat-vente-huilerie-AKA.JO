@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   identifiant TEXT UNIQUE NOT NULL,
   code_hash TEXT NOT NULL,
   nom TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('gerant', 'agent')),
+  role TEXT NOT NULL CHECK (role IN ('gerant', 'dirigeant', 'agent')),
   actif INTEGER NOT NULL DEFAULT 1,
   doit_changer_code INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
@@ -134,6 +134,7 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'ventes', 'motif_annulation', 'TEXT');
   await ensureColumn(db, 'users', 'doit_changer_code', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(db, 'caisses', 'owner_identifiant', 'TEXT');
+  await ensureUsersAllowsDirigeant(db);
   await seedIfEmpty(db);
   await ensureCaissesForExistingUsers(db);
   await fusionnerCaissesUniquesEnDouble(db);
@@ -198,6 +199,30 @@ async function ensureCaissesAllowsBanque(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('INSERT INTO caisses SELECT * FROM caisses_old');
   await db.execAsync('DROP TABLE caisses_old');
   await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_caisses_user ON caisses(user_id)');
+}
+
+// Même contrainte SQLite qu'au-dessus, pour le rôle "dirigeant" ajouté sur la table users.
+async function ensureUsersAllowsDirigeant(db: SQLiteDatabase): Promise<void> {
+  const row = await db.getFirstAsync<{ sql: string }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
+  );
+  if (!row || row.sql.includes('dirigeant')) return;
+
+  await db.execAsync('ALTER TABLE users RENAME TO users_old');
+  await db.execAsync(`
+    CREATE TABLE users (
+      id TEXT PRIMARY KEY NOT NULL,
+      identifiant TEXT UNIQUE NOT NULL,
+      code_hash TEXT NOT NULL,
+      nom TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('gerant', 'dirigeant', 'agent')),
+      actif INTEGER NOT NULL DEFAULT 1,
+      doit_changer_code INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )
+  `);
+  await db.execAsync('INSERT INTO users SELECT * FROM users_old');
+  await db.execAsync('DROP TABLE users_old');
 }
 
 // Ajoute une colonne manquante sur une base existante (installations déjà en place avant cette version du schéma).

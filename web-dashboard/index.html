@@ -194,8 +194,10 @@ async function enterDashboard() {
   currentNom = profile.nom;
   document.getElementById('user-nom').textContent = currentNom;
   const roleLabel = document.getElementById('user-role');
-  roleLabel.textContent = currentRole === 'gerant' ? 'Gérant' : 'Agent pont-bascule';
-  roleLabel.style.background = currentRole === 'gerant' ? 'rgba(184,134,11,0.35)' : 'rgba(201,122,30,0.35)';
+  const roleLabels = { gerant: 'Gérant', dirigeant: 'Dirigeant', agent: 'Agent pont-bascule' };
+  const roleBg = { gerant: 'rgba(184,134,11,0.35)', dirigeant: 'rgba(90,115,80,0.35)', agent: 'rgba(201,122,30,0.35)' };
+  roleLabel.textContent = roleLabels[currentRole] || currentRole;
+  roleLabel.style.background = roleBg[currentRole] || roleBg.agent;
 
   loginScreen.style.display = 'none';
   dashScreen.style.display = 'block';
@@ -207,7 +209,7 @@ async function enterDashboard() {
 async function loadAll() {
   const [{ data: pesees }, ventesResult, { data: planteurs }] = await Promise.all([
     sb.from('pesees').select('*').order('ts', { ascending: false }).limit(50),
-    currentRole === 'gerant'
+    currentRole !== 'agent'
       ? sb.from('ventes').select('*').order('ts', { ascending: false }).limit(50)
       : sb.from('ventes_agent_view').select('*').order('ts', { ascending: false }).limit(50),
     sb.from('planteurs').select('*'),
@@ -237,7 +239,7 @@ function renderStats(pesees, ventes) {
     { label: 'Transport régime — jour', value: fmtF(transportRegime), cls: 'frond' },
   ];
 
-  if (currentRole === 'gerant') {
+  if (currentRole !== 'agent') {
     const venteMontant = todayVentes.reduce((s, v) => s + (v.montant || 0), 0);
     const transportHuile = todayVentes.reduce((s, v) => s + (v.montant_transport || 0), 0);
     cards.push({ label: 'Ventes huile — jour', value: fmtF(venteMontant), cls: 'oil' });
@@ -271,7 +273,7 @@ function renderAchats(pesees) {
 
 function renderVentes(ventes) {
   const table = document.getElementById('table-ventes');
-  if (currentRole === 'gerant') {
+  if (currentRole !== 'agent') {
     table.querySelector('thead').innerHTML = `<tr><th>N° pesée</th><th>Client</th><th>Net</th><th>Prix/litre</th><th>Montant</th><th>Transport</th></tr>`;
     table.querySelector('tbody').innerHTML = ventes.slice(0, 20).map((v) => `
       <tr>

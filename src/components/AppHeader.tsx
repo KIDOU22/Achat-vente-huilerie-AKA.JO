@@ -13,7 +13,7 @@ import { RoleBadge } from './ui/RoleBadge';
 const logo = require('../../assets/images/logo-akajo.png');
 
 export function AppHeader() {
-  const { currentUser, isManager, logout } = useAuth();
+  const { currentUser, isElevated, logout } = useAuth();
   const { pesees, ventes } = useAppData();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -51,7 +51,7 @@ export function AppHeader() {
           <RoleBadge role={currentUser.role} />
         </View>
         <View style={styles.actions}>
-          {isManager && (
+          {isElevated && (
             <Pressable onPress={() => router.push('/comptes')} hitSlop={10}>
               <UserCog size={18} color={colors.onBackgroundMuted} />
             </Pressable>
@@ -75,7 +75,7 @@ export function AppHeader() {
         <View style={styles.divider} />
         <View style={styles.statCell}>
           <Text style={styles.statLabel}>Ventes huile</Text>
-          {isManager ? (
+          {isElevated ? (
             <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalVenteJour)}</Text>
           ) : (
             <Lock size={14} color={colors.onBackgroundFaint} />

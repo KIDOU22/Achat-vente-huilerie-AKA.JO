@@ -17,7 +17,7 @@ import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 export function AchatScreen() {
-  const { isManager } = useAuth();
+  const { isManager, isElevated } = useAuth();
   const { planteurs, enregistrerPesee, prixKg, setPrixKg, prixTransportRegime, setPrixTransportRegime } = useAppData();
 
   const [selectedPlanteur, setSelectedPlanteur] = useState(planteurs[0]?.id ?? '');
@@ -119,7 +119,7 @@ export function AchatScreen() {
 
       <View style={styles.priceBox}>
         <Text style={styles.netLabel}>Prix du jour de régime (CFA/Kg)</Text>
-        {isManager ? (
+        {isElevated ? (
           <TextInput value={prixKg} onChangeText={setPrixKg} keyboardType="numeric" style={styles.priceInput} />
         ) : (
           <Text style={styles.priceReadOnly}>{formatFCFA(prixNum)}</Text>

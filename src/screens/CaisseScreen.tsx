@@ -28,7 +28,7 @@ type FormKind =
 
 export function CaisseScreen() {
   const db = useSQLiteContext();
-  const { currentUser, isManager } = useAuth();
+  const { currentUser, isManager, isElevated } = useAuth();
   const {
     caisses,
     mouvements,
@@ -180,46 +180,50 @@ export function CaisseScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      {isManager && banque && (
+      {isElevated && banque && (
         <Card style={[styles.soldeCard, { borderColor: `${colors.amber}55` }]}>
           <View style={styles.soldeHeader}>
             <Landmark size={16} color={colors.amber} />
             <Text style={styles.soldeLabel}>Banque</Text>
           </View>
           <Text style={[styles.soldeValue, { color: colors.amber }]}>{formatFCFA(soldeCaisse(banque.id))}</Text>
-          <View style={styles.actionsRow}>
-            <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.amber} />} onPress={() => setForm('apport_banque')} />
-            <ActionChip
-              label="Vers un compte"
-              icon={<ArrowLeftRight size={13} color={colors.amber} />}
-              onPress={() => setForm('transfert_banque_vers')}
-            />
-            <ActionChip
-              label="Depuis un compte"
-              icon={<CornerUpLeft size={13} color={colors.amber} />}
-              onPress={() => setForm('transfert_banque_depuis')}
-            />
-          </View>
+          {isManager && (
+            <View style={styles.actionsRow}>
+              <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.amber} />} onPress={() => setForm('apport_banque')} />
+              <ActionChip
+                label="Vers un compte"
+                icon={<ArrowLeftRight size={13} color={colors.amber} />}
+                onPress={() => setForm('transfert_banque_vers')}
+              />
+              <ActionChip
+                label="Depuis un compte"
+                icon={<CornerUpLeft size={13} color={colors.amber} />}
+                onPress={() => setForm('transfert_banque_depuis')}
+              />
+            </View>
+          )}
         </Card>
       )}
 
-      {isManager && principale && (
+      {isElevated && principale && (
         <Card style={[styles.soldeCard, { borderColor: `${colors.oil}55` }]}>
           <View style={styles.soldeHeader}>
             <Wallet size={16} color={colors.oil} />
             <Text style={styles.soldeLabel}>Caisse principale</Text>
           </View>
           <Text style={[styles.soldeValue, { color: colors.oil }]}>{formatFCFA(soldeCaisse(principale.id))}</Text>
-          <View style={styles.actionsRow}>
-            <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.oil} />} onPress={() => setForm('apport')} />
-            {banque && (
-              <ActionChip
-                label="Vers la banque"
-                icon={<Landmark size={13} color={colors.amber} />}
-                onPress={() => setForm('principale_vers_banque')}
-              />
-            )}
-          </View>
+          {isManager && (
+            <View style={styles.actionsRow}>
+              <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.oil} />} onPress={() => setForm('apport')} />
+              {banque && (
+                <ActionChip
+                  label="Vers la banque"
+                  icon={<Landmark size={13} color={colors.amber} />}
+                  onPress={() => setForm('principale_vers_banque')}
+                />
+              )}
+            </View>
+          )}
         </Card>
       )}
 
@@ -345,20 +349,32 @@ export function CaisseScreen() {
         </View>
       )}
 
-      {isManager && banqueTransfertsEnAttente.length > 0 && (
+      {isElevated && banqueTransfertsEnAttente.length > 0 && (
         <View style={{ gap: 8 }}>
           <Text style={styles.sectionTitle}>Transferts banque à valider</Text>
           {banqueTransfertsEnAttente.map((m) => (
-            <MouvementRow key={m.id} m={m} nomDe={nomCaisse} caisses={caisses} onPress={() => confirmValider(m)} />
+            <MouvementRow
+              key={m.id}
+              m={m}
+              nomDe={nomCaisse}
+              caisses={caisses}
+              onPress={isManager ? () => confirmValider(m) : undefined}
+            />
           ))}
         </View>
       )}
 
-      {isManager && retoursEnAttente.length > 0 && (
+      {isElevated && retoursEnAttente.length > 0 && (
         <View style={{ gap: 8 }}>
           <Text style={styles.sectionTitle}>Retours à valider</Text>
           {retoursEnAttente.map((m) => (
-            <MouvementRow key={m.id} m={m} nomDe={nomCaisse} caisses={caisses} onPress={() => confirmValider(m)} />
+            <MouvementRow
+              key={m.id}
+              m={m}
+              nomDe={nomCaisse}
+              caisses={caisses}
+              onPress={isManager ? () => confirmValider(m) : undefined}
+            />
           ))}
         </View>
       )}
@@ -372,7 +388,7 @@ export function CaisseScreen() {
         </View>
       )}
 
-      {isManager && (
+      {isElevated && (
         <View style={{ gap: 8 }}>
           <Text style={styles.sectionTitle}>Caisses des utilisateurs</Text>
           {autresCaisses.map((c) => (
@@ -393,7 +409,7 @@ export function CaisseScreen() {
         </View>
       )}
 
-      {isManager && historiqueBanque.length > 0 && (
+      {isElevated && historiqueBanque.length > 0 && (
         <View style={{ gap: 8 }}>
           <Text style={styles.sectionTitle}>Historique banque</Text>
           {historiqueBanque.map((m) => (

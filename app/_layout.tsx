@@ -45,14 +45,16 @@ function AuthGate() {
     return <LoadingScreen />;
   }
 
+  const isElevated = currentUser?.role === 'gerant' || currentUser?.role === 'dirigeant';
+
   return (
     <DataProvider>
-      <RootNavigator isAuthenticated={!!currentUser} isManager={currentUser?.role === 'gerant'} />
+      <RootNavigator isAuthenticated={!!currentUser} isElevated={isElevated} />
     </DataProvider>
   );
 }
 
-function RootNavigator({ isAuthenticated, isManager }: { isAuthenticated: boolean; isManager: boolean }) {
+function RootNavigator({ isAuthenticated, isElevated }: { isAuthenticated: boolean; isElevated: boolean }) {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
       <Stack.Screen name="index" />
@@ -61,7 +63,7 @@ function RootNavigator({ isAuthenticated, isManager }: { isAuthenticated: boolea
       </Stack.Protected>
       <Stack.Protected guard={isAuthenticated}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Protected guard={isManager}>
+        <Stack.Protected guard={isElevated}>
           <Stack.Screen
             name="comptes"
             options={{ headerShown: true, title: 'Comptes utilisateurs', presentation: 'modal' }}

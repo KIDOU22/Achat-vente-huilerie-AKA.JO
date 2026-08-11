@@ -17,15 +17,15 @@ const PERIODES: { key: Periode; label: string }[] = [
 ];
 
 export function SyntheseScreen() {
-  const { isManager } = useAuth();
+  const { isElevated } = useAuth();
 
-  if (!isManager) {
+  if (!isElevated) {
     return (
       <View style={styles.locked}>
         <Lock size={32} color={colors.onBackgroundFaint} />
-        <Text style={styles.lockedTitle}>Accès réservé au gérant</Text>
+        <Text style={styles.lockedTitle}>Accès réservé au gérant et au dirigeant</Text>
         <Text style={styles.lockedSubtitle}>
-          Les montants et la synthèse financière ne sont visibles que par le gérant.
+          Les montants et la synthèse financière ne sont visibles que par le gérant et le dirigeant.
         </Text>
       </View>
     );

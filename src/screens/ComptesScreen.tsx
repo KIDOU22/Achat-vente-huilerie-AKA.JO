@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { RoleBadge } from '../components/ui/RoleBadge';
 import { TextField } from '../components/ui/TextField';
 import { changeUserRole, createUser, listUsers, reinitialiserAcces, revokeUser } from '../db/repositories/users';
 import { getCaisseForUser } from '../db/repositories/caisses';
@@ -15,11 +16,11 @@ import { pushCaisse } from '../sync/push';
 import { colors, roleColors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
-const ROLE_OPTIONS: Role[] = ['gerant', 'agent'];
+const ROLE_OPTIONS: Role[] = ['gerant', 'dirigeant', 'agent'];
 
 export function ComptesScreen() {
   const db = useSQLiteContext();
-  const { currentUser, isManager } = useAuth();
+  const { currentUser, isManager, isElevated } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,10 +50,10 @@ export function ComptesScreen() {
     })();
   }, [refresh]);
 
-  if (!isManager) {
+  if (!isElevated) {
     return (
       <View style={styles.locked}>
-        <Text style={styles.lockedText}>Accès réservé au gérant</Text>
+        <Text style={styles.lockedText}>Accès réservé au gérant et au dirigeant</Text>
       </View>
     );
   }
@@ -154,52 +155,54 @@ export function ComptesScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      <Card style={{ gap: 10 }}>
-        <Text style={styles.cardTitle}>Nouvel utilisateur</Text>
-        <Text style={styles.resetHint}>
-          Identifiant et code provisoires — l'utilisateur devra créer les siens (personnels) à sa première connexion.
-        </Text>
-        <TextField label="Nom complet" value={nom} onChangeText={setNom} placeholder="Nom complet" />
-        <View style={styles.grid2}>
-          <View style={{ flex: 1 }}>
-            <TextField label="Identifiant provisoire" value={identifiant} onChangeText={setIdentifiant} placeholder="Identifiant" autoCapitalize="none" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <TextField label="Code provisoire" value={code} onChangeText={setCode} placeholder="Code d'accès" mono keyboardType="number-pad" secureTextEntry />
-          </View>
-        </View>
-        <View>
-          <Text style={styles.fieldLabel}>Niveau de responsabilité</Text>
+      {isManager && (
+        <Card style={{ gap: 10 }}>
+          <Text style={styles.cardTitle}>Nouvel utilisateur</Text>
+          <Text style={styles.resetHint}>
+            Identifiant et code provisoires — l'utilisateur devra créer les siens (personnels) à sa première connexion.
+          </Text>
+          <TextField label="Nom complet" value={nom} onChangeText={setNom} placeholder="Nom complet" />
           <View style={styles.grid2}>
-            {ROLE_OPTIONS.map((r) => {
-              const active = role === r;
-              return (
-                <Pressable
-                  key={r}
-                  onPress={() => setRole(r)}
-                  style={[
-                    styles.roleChip,
-                    active ? { backgroundColor: roleColors[r] } : styles.roleChipInactive,
-                  ]}
-                >
-                  <Text style={[styles.roleChipText, { color: active ? colors.onBackground : colors.textMuted }]}>
-                    {ROLE_LABELS[r]}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            <View style={{ flex: 1 }}>
+              <TextField label="Identifiant provisoire" value={identifiant} onChangeText={setIdentifiant} placeholder="Identifiant" autoCapitalize="none" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <TextField label="Code provisoire" value={code} onChangeText={setCode} placeholder="Code d'accès" mono keyboardType="number-pad" secureTextEntry />
+            </View>
           </View>
-        </View>
-        {!!error && <Text style={styles.error}>{error}</Text>}
-        <Button
-          label="Ajouter"
-          onPress={handleAdd}
-          disabled={!nom.trim() || !identifiant.trim() || !code.trim()}
-          loading={saving}
-          color={colors.frond}
-          icon={<Plus size={16} color={colors.onBackground} />}
-        />
-      </Card>
+          <View>
+            <Text style={styles.fieldLabel}>Niveau de responsabilité</Text>
+            <View style={styles.grid2}>
+              {ROLE_OPTIONS.map((r) => {
+                const active = role === r;
+                return (
+                  <Pressable
+                    key={r}
+                    onPress={() => setRole(r)}
+                    style={[
+                      styles.roleChip,
+                      active ? { backgroundColor: roleColors[r] } : styles.roleChipInactive,
+                    ]}
+                  >
+                    <Text style={[styles.roleChipText, { color: active ? colors.onBackground : colors.textMuted }]}>
+                      {ROLE_LABELS[r]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          {!!error && <Text style={styles.error}>{error}</Text>}
+          <Button
+            label="Ajouter"
+            onPress={handleAdd}
+            disabled={!nom.trim() || !identifiant.trim() || !code.trim()}
+            loading={saving}
+            color={colors.frond}
+            icon={<Plus size={16} color={colors.onBackground} />}
+          />
+        </Card>
+      )}
 
       <View style={{ gap: 8, marginTop: 16 }}>
         {!loading &&
@@ -216,41 +219,47 @@ export function ComptesScreen() {
                     {u.doitChangerCode && <Text style={styles.pendingBadge}>En attente de configuration par l'utilisateur</Text>}
                   </View>
                 </View>
-                <View style={styles.userActions}>
-                  <Pressable onPress={() => openReset(u)} hitSlop={10}>
-                    <RotateCcw size={16} color={colors.textMuted} />
-                  </Pressable>
-                  {u.id !== currentUser?.id && (
-                    <Pressable onPress={() => handleRevoke(u)} hitSlop={10}>
-                      <X size={16} color={colors.textMuted} />
+                {isManager && (
+                  <View style={styles.userActions}>
+                    <Pressable onPress={() => openReset(u)} hitSlop={10}>
+                      <RotateCcw size={16} color={colors.textMuted} />
                     </Pressable>
-                  )}
+                    {u.id !== currentUser?.id && (
+                      <Pressable onPress={() => handleRevoke(u)} hitSlop={10}>
+                        <X size={16} color={colors.textMuted} />
+                      </Pressable>
+                    )}
+                  </View>
+                )}
+              </View>
+              {isManager ? (
+                <View style={styles.grid2}>
+                  {ROLE_OPTIONS.map((r) => {
+                    const active = u.role === r;
+                    const isSelf = u.id === currentUser?.id;
+                    return (
+                      <Pressable
+                        key={r}
+                        disabled={isSelf}
+                        onPress={() => handleChangeRole(u, r)}
+                        style={[
+                          styles.roleChipSmall,
+                          active ? { backgroundColor: roleColors[r] } : styles.roleChipSmallInactive,
+                          isSelf && { opacity: 0.4 },
+                        ]}
+                      >
+                        <Text style={[styles.roleChipSmallText, { color: active ? colors.onBackground : colors.textMuted }]}>
+                          {ROLE_LABELS[r]}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
-              </View>
-              <View style={styles.grid2}>
-                {ROLE_OPTIONS.map((r) => {
-                  const active = u.role === r;
-                  const isSelf = u.id === currentUser?.id;
-                  return (
-                    <Pressable
-                      key={r}
-                      disabled={isSelf}
-                      onPress={() => handleChangeRole(u, r)}
-                      style={[
-                        styles.roleChipSmall,
-                        active ? { backgroundColor: roleColors[r] } : styles.roleChipSmallInactive,
-                        isSelf && { opacity: 0.4 },
-                      ]}
-                    >
-                      <Text style={[styles.roleChipSmallText, { color: active ? colors.onBackground : colors.textMuted }]}>
-                        {ROLE_LABELS[r]}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              ) : (
+                <RoleBadge role={u.role} />
+              )}
 
-              {resetTarget?.id === u.id && (
+              {isManager && resetTarget?.id === u.id && (
                 <View style={styles.resetForm}>
                   <Text style={styles.resetTitle}>Réinitialiser l'accès de {u.nom}</Text>
                   <Text style={styles.resetHint}>

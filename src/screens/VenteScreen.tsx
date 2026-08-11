@@ -16,7 +16,7 @@ import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 export function VenteScreen() {
-  const { isManager } = useAuth();
+  const { isManager, isElevated } = useAuth();
   const { enregistrerVente, prixLitre, setPrixLitre } = useAppData();
 
   const [client, setClient] = useState('');
@@ -111,7 +111,7 @@ export function VenteScreen() {
 
       <View style={styles.priceBox}>
         <Text style={styles.netLabel}>Prix du litre (F)</Text>
-        {isManager ? (
+        {isElevated ? (
           <TextInput value={prixLitre} onChangeText={setPrixLitre} keyboardType="numeric" style={styles.priceInput} />
         ) : (
           <View style={styles.lockedRow}>
@@ -122,7 +122,7 @@ export function VenteScreen() {
 
       <View style={styles.montantRow}>
         <Text style={styles.netLabel}>Montant vente d'huile</Text>
-        {isManager ? (
+        {isElevated ? (
           <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
         ) : (
           <View style={styles.lockedRow}>
@@ -148,14 +148,14 @@ export function VenteScreen() {
         )}
       </View>
 
-      {isManager && montantTransport > 0 && (
+      {isElevated && montantTransport > 0 && (
         <View style={styles.priceBox}>
           <Text style={styles.netLabel}>Prix de revient (CFA/Kg)</Text>
           <Text style={styles.priceReadOnly}>{formatFCFA(prixRevient)}</Text>
         </View>
       )}
 
-      {isManager && montantTransport > 0 && (
+      {isElevated && montantTransport > 0 && (
         <View style={styles.montantRow}>
           <Text style={styles.netLabel}>Montant net (revient)</Text>
           <Text style={styles.montantValue}>{formatFCFA(montantNet)}</Text>
@@ -174,7 +174,7 @@ export function VenteScreen() {
       {lastVente && (
         <View style={styles.lastTicket}>
           <Text style={styles.lastTicketLabel}>Dernier ticket</Text>
-          <VenteTicketCard t={lastVente} isManager={isManager} />
+          <VenteTicketCard t={lastVente} isManager={isElevated} />
         </View>
       )}
     </ScrollView>

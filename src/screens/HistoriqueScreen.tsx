@@ -14,7 +14,7 @@ import { fonts } from '../theme/typography';
 type Row = { kind: 'pesee'; item: Pesee } | { kind: 'vente'; item: Vente };
 
 export function HistoriqueScreen() {
-  const { isManager } = useAuth();
+  const { isElevated } = useAuth();
   const { pesees, ventes, planteurs, togglePaye, annulerPesee, annulerVente } = useAppData();
   const [motifCible, setMotifCible] = useState<{ kind: 'pesee' | 'vente'; id: string } | null>(null);
   const [motif, setMotif] = useState('');
@@ -87,11 +87,11 @@ export function HistoriqueScreen() {
               pesee={row.item}
               planteurNom={planteurById(row.item.planteurId)?.nom}
               onTogglePaye={togglePaye}
-              isManager={isManager}
+              isManager={isElevated}
               onAnnuler={() => demanderAnnulation('pesee', row.item.id)}
             />
           ) : (
-            <VenteRow vente={row.item} isManager={isManager} onAnnuler={() => demanderAnnulation('vente', row.item.id)} />
+            <VenteRow vente={row.item} isManager={isElevated} onAnnuler={() => demanderAnnulation('vente', row.item.id)} />
           )
         }
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}

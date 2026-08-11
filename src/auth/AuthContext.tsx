@@ -13,6 +13,8 @@ interface AuthContextValue {
   currentUser: User | null;
   pendingOnboarding: User | null;
   isManager: boolean;
+  isDirigeant: boolean;
+  isElevated: boolean;
   isLoading: boolean;
   login: (identifiant: string, code: string) => Promise<{ ok: boolean; error?: string; syncError?: string; mustOnboard?: boolean }>;
   completeOnboarding: (identifiant: string, code: string) => Promise<{ ok: boolean; error?: string; syncError?: string }>;
@@ -124,6 +126,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       currentUser,
       pendingOnboarding,
       isManager: currentUser?.role === 'gerant',
+      isDirigeant: currentUser?.role === 'dirigeant',
+      isElevated: currentUser?.role === 'gerant' || currentUser?.role === 'dirigeant',
       isLoading,
       login,
       completeOnboarding,

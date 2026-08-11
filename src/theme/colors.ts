@@ -29,6 +29,7 @@ export const colors = {
 
 export const roleColors = {
   gerant: colors.oil,
+  dirigeant: colors.frond,
   agent: colors.amber,
 } as const;
 
