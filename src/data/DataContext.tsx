@@ -2,7 +2,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
-import { createPlanteur, listPlanteurs, tonnageParPlanteur, type PlanteurTonnage } from '../db/repositories/planteurs';
+import { createPlanteur, deletePlanteur as deletePlanteurRepo, listPlanteurs, tonnageParPlanteur, type PlanteurTonnage } from '../db/repositories/planteurs';
 import {
   annulerPesee as annulerPeseeRepo,
   createPesee,
@@ -32,6 +32,7 @@ import { pullAll } from '../sync/pull';
 import {
   pushCaisse,
   pushDeleteMouvementForPesee,
+  pushDeletePlanteur,
   pushMouvement,
   pushMouvementStatus,
   pushPayeStatus,
@@ -55,6 +56,7 @@ interface DataContextValue {
   loading: boolean;
   refresh: () => Promise<void>;
   addPlanteur: (input: { nom: string; village: string; tel: string }) => Promise<Planteur>;
+  supprimerPlanteur: (id: string) => Promise<void>;
   enregistrerPesee: (input: Omit<CreatePeseeInput, 'userId' | 'userNom'>) => Promise<Pesee>;
   enregistrerVente: (input: Omit<CreateVenteInput, 'userId' | 'userNom'>) => Promise<Vente>;
   togglePaye: (id: string, paye: boolean) => Promise<void>;
@@ -182,6 +184,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       await refresh();
       pushPlanteur(p).catch(() => {});
       return p;
+    },
+    [db, refresh]
+  );
+
+  const supprimerPlanteur = useCallback(
+    async (id: string) => {
+      await deletePlanteurRepo(db, id);
+      await refresh();
+      const r = await pushDeletePlanteur(id).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (suppression planteur)', r.error ?? 'Erreur inconnue');
+      }
     },
     [db, refresh]
   );
@@ -405,6 +419,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       loading,
       refresh,
       addPlanteur,
+      supprimerPlanteur,
       enregistrerPesee,
       enregistrerVente,
       togglePaye,
@@ -435,6 +450,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       loading,
       refresh,
       addPlanteur,
+      supprimerPlanteur,
       enregistrerPesee,
       enregistrerVente,
       togglePaye,

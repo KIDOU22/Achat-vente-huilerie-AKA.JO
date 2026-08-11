@@ -1,17 +1,20 @@
-import { Plus, Search } from 'lucide-react-native';
+import { Plus, Search, Trash2 } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { SectionTitle } from '../components/ui/SectionTitle';
 import { TextField } from '../components/ui/TextField';
 import { useAppData } from '../data/DataContext';
 import { formatTonnes } from '../domain/format';
+import type { Planteur } from '../domain/types';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 export function PlanteursScreen() {
-  const { planteurs, tonnageParPlanteur, addPlanteur } = useAppData();
+  const { isManager } = useAuth();
+  const { planteurs, tonnageParPlanteur, addPlanteur, supprimerPlanteur } = useAppData();
 
   const [search, setSearch] = useState('');
   const [nom, setNom] = useState('');
@@ -35,6 +38,23 @@ export function PlanteursScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleDelete(planteur: Planteur) {
+    Alert.alert('Supprimer ce planteur ?', `${planteur.nom} sera définitivement retiré de la liste.`, [
+      { text: 'Retour', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await supprimerPlanteur(planteur.id);
+          } catch (err) {
+            Alert.alert('Suppression impossible', err instanceof Error ? err.message : String(err));
+          }
+        },
+      },
+    ]);
   }
 
   return (
@@ -85,6 +105,11 @@ export function PlanteursScreen() {
               <Text style={styles.tonnageValue}>{formatTonnes(tonnage?.totalNet ?? 0)}</Text>
               <Text style={styles.tonnageLabel}>{tonnage?.livraisons ?? 0} livraison{(tonnage?.livraisons ?? 0) > 1 ? 's' : ''}</Text>
             </View>
+            {isManager && (
+              <Pressable onPress={() => handleDelete(item)} hitSlop={10} style={styles.deleteBtn}>
+                <Trash2 size={16} color={colors.accent} />
+              </Pressable>
+            )}
           </Card>
         );
       }}
@@ -114,6 +139,7 @@ const styles = StyleSheet.create({
   planteurName: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.text },
   planteurMeta: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },
   tonnageBlock: { alignItems: 'flex-end' },
+  deleteBtn: { marginLeft: 10, padding: 4 },
   tonnageValue: { fontFamily: fonts.monoSemiBold, fontSize: 15, color: colors.amber },
   tonnageLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, marginTop: 2 },
   empty: { textAlign: 'center', color: colors.onBackgroundMuted, fontFamily: fonts.body, paddingVertical: 24 },

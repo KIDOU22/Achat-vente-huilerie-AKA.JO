@@ -39,6 +39,23 @@ export async function pushPlanteur(p: Planteur): Promise<PushResult> {
   }
 }
 
+export async function pushDeletePlanteur(id: string): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('planteurs').delete().eq('id', id);
+    if (error) {
+      console.warn('[sync] pushDeletePlanteur a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushDeletePlanteur a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
 export async function pushPesee(p: Pesee): Promise<PushResult> {
   if (!supabase) return { ok: false, error: 'Supabase non configuré' };
   if (!UUID_RE.test(p.id) || !UUID_RE.test(p.planteurId)) {

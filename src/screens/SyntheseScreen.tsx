@@ -1,11 +1,12 @@
-import { Lock } from 'lucide-react-native';
-import React, { useMemo, useState } from 'react';
+import { useSQLiteContext } from 'expo-sqlite';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { BarChart } from '../components/BarChart';
 import { useAppData } from '../data/DataContext';
+import { listUsers } from '../db/repositories/users';
 import { buildBuckets, formatFCFA, formatTonnes, PERIODE_LABELS, periodKey } from '../domain/format';
-import type { Metrique, Periode } from '../domain/types';
+import type { Metrique, Periode, User } from '../domain/types';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -16,28 +17,127 @@ const PERIODES: { key: Periode; label: string }[] = [
   { key: 'annee', label: 'Année' },
 ];
 
+function PeriodeSelector({ periode, onChange }: { periode: Periode; onChange: (p: Periode) => void }) {
+  return (
+    <View>
+      <Text style={styles.label}>Période</Text>
+      <View style={styles.periodeRow}>
+        {PERIODES.map((p) => {
+          const active = p.key === periode;
+          return (
+            <Pressable
+              key={p.key}
+              onPress={() => onChange(p.key)}
+              style={[styles.periodeChip, active ? { backgroundColor: colors.text } : styles.periodeChipInactive]}
+            >
+              <Text style={[styles.periodeChipText, { color: active ? colors.onBackground : colors.textMuted }]}>{p.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export function SyntheseScreen() {
   const { isElevated } = useAuth();
+  return isElevated ? <SyntheseContent /> : <SyntheseAgentContent />;
+}
 
-  if (!isElevated) {
-    return (
-      <View style={styles.locked}>
-        <Lock size={32} color={colors.onBackgroundFaint} />
-        <Text style={styles.lockedTitle}>Accès réservé au gérant et au dirigeant</Text>
-        <Text style={styles.lockedSubtitle}>
-          Les montants et la synthèse financière ne sont visibles que par le gérant et le dirigeant.
+function SyntheseAgentContent() {
+  const { pesees } = useAppData();
+  const { currentUser } = useAuth();
+  const [periode, setPeriode] = useState<Periode>('jour');
+
+  const mesPesees = useMemo(
+    () => pesees.filter((p) => !p.annulee && p.createdBy === currentUser?.id),
+    [pesees, currentUser]
+  );
+
+  const currentBucket = useMemo(() => {
+    const nowKey = periodKey(new Date(), periode);
+    let poids = 0;
+    let montant = 0;
+    let count = 0;
+    for (const p of mesPesees) {
+      if (periodKey(new Date(p.ts), periode) === nowKey) {
+        poids += p.net;
+        montant += p.montant;
+        count += 1;
+      }
+    }
+    return { poids, montant, count };
+  }, [mesPesees, periode]);
+
+  return (
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+      <PeriodeSelector periode={periode} onChange={setPeriode} />
+
+      <View style={[styles.statCard, { borderColor: `${colors.accent}44` }]}>
+        <Text style={styles.statLabel}>Mes achats — {PERIODE_LABELS[periode]}</Text>
+        <Text style={[styles.statBig, { color: colors.accent }]}>{formatTonnes(currentBucket.poids)}</Text>
+        <Text style={styles.statSmall}>
+          {formatFCFA(currentBucket.montant)} · {currentBucket.count} pesée{currentBucket.count > 1 ? 's' : ''}
         </Text>
       </View>
-    );
-  }
-
-  return <SyntheseContent />;
+    </ScrollView>
+  );
 }
 
 function SyntheseContent() {
-  const { pesees, ventes } = useAppData();
+  const { pesees, ventes, planteurs } = useAppData();
+  const db = useSQLiteContext();
+  const [users, setUsers] = useState<User[]>([]);
   const [periode, setPeriode] = useState<Periode>('jour');
   const [metrique, setMetrique] = useState<Metrique>('poids');
+
+  useEffect(() => {
+    listUsers(db).then(setUsers);
+  }, [db]);
+
+  const periodePesees = useMemo(() => {
+    const nowKey = periodKey(new Date(), periode);
+    return pesees.filter((p) => !p.annulee && periodKey(new Date(p.ts), periode) === nowKey);
+  }, [pesees, periode]);
+
+  const parAgent = useMemo(() => {
+    const map = new Map<string, { nom: string; poids: number; montant: number; count: number }>();
+    for (const p of periodePesees) {
+      const nom = users.find((u) => u.id === p.createdBy)?.nom ?? 'Inconnu';
+      const cur = map.get(p.createdBy) ?? { nom, poids: 0, montant: 0, count: 0 };
+      cur.poids += p.net;
+      cur.montant += p.montant;
+      cur.count += 1;
+      map.set(p.createdBy, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.poids - a.poids);
+  }, [periodePesees, users]);
+
+  const parPlanteur = useMemo(() => {
+    const map = new Map<string, { nom: string; poids: number; count: number }>();
+    for (const p of periodePesees) {
+      const nom = planteurs.find((pl) => pl.id === p.planteurId)?.nom ?? 'Inconnu';
+      const cur = map.get(p.planteurId) ?? { nom, poids: 0, count: 0 };
+      cur.poids += p.net;
+      cur.count += 1;
+      map.set(p.planteurId, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.poids - a.poids);
+  }, [periodePesees, planteurs]);
+
+  const parChauffeur = useMemo(() => {
+    const map = new Map<string, { poids: number; count: number }>();
+    for (const p of periodePesees) {
+      const key = p.chauffeur || '—';
+      const cur = map.get(key) ?? { poids: 0, count: 0 };
+      cur.poids += p.net;
+      cur.count += 1;
+      map.set(key, cur);
+    }
+    return Array.from(map.entries())
+      .map(([chauffeur, v]) => ({ chauffeur, ...v }))
+      .sort((a, b) => b.poids - a.poids);
+  }, [periodePesees]);
 
   const chartData = useMemo(() => {
     const buckets = buildBuckets(periode);
@@ -81,23 +181,7 @@ function SyntheseContent() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      <View>
-        <Text style={styles.label}>Période</Text>
-        <View style={styles.periodeRow}>
-          {PERIODES.map((p) => {
-            const active = p.key === periode;
-            return (
-              <Pressable
-                key={p.key}
-                onPress={() => setPeriode(p.key)}
-                style={[styles.periodeChip, active ? { backgroundColor: colors.text } : styles.periodeChipInactive]}
-              >
-                <Text style={[styles.periodeChipText, { color: active ? colors.onBackground : colors.textMuted }]}>{p.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
+      <PeriodeSelector periode={periode} onChange={setPeriode} />
 
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { borderColor: `${colors.accent}44` }]}>
@@ -150,16 +234,51 @@ function SyntheseContent() {
           <BarChart data={chartData} metrique={metrique} />
         </View>
       </View>
+
+      <BreakdownCard
+        title={`Achats par agent — ${PERIODE_LABELS[periode]}`}
+        rows={parAgent.map((r) => ({ label: r.nom, poids: r.poids, sub: `${formatFCFA(r.montant)} · ${r.count} pesée${r.count > 1 ? 's' : ''}` }))}
+      />
+
+      <BreakdownCard
+        title={`Achats par planteur — ${PERIODE_LABELS[periode]}`}
+        rows={parPlanteur.map((r) => ({ label: r.nom, poids: r.poids, sub: `${r.count} pesée${r.count > 1 ? 's' : ''}` }))}
+      />
+
+      <BreakdownCard
+        title={`Achats par chauffeur — ${PERIODE_LABELS[periode]}`}
+        rows={parChauffeur.map((r) => ({ label: r.chauffeur, poids: r.poids, sub: `${r.count} pesée${r.count > 1 ? 's' : ''}` }))}
+      />
     </ScrollView>
+  );
+}
+
+function BreakdownCard({ title, rows }: { title: string; rows: { label: string; poids: number; sub: string }[] }) {
+  return (
+    <View>
+      <Text style={styles.label}>{title}</Text>
+      <View style={styles.breakdownCard}>
+        {rows.length === 0 ? (
+          <Text style={styles.empty}>Aucun achat sur cette période</Text>
+        ) : (
+          rows.map((row, i) => (
+            <View key={row.label} style={[styles.breakdownRow, i === rows.length - 1 && { borderBottomWidth: 0 }]}>
+              <Text style={styles.breakdownName}>{row.label}</Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.breakdownValue}>{formatTonnes(row.poids)}</Text>
+                <Text style={styles.breakdownSub}>{row.sub}</Text>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: 20, gap: 20, paddingBottom: 60 },
-  locked: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 40 },
-  lockedTitle: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.onBackground },
-  lockedSubtitle: { fontFamily: fonts.body, fontSize: 12, color: colors.onBackgroundMuted, textAlign: 'center' },
   label: {
     fontFamily: fonts.mono,
     fontSize: 11,
@@ -197,4 +316,23 @@ const styles = StyleSheet.create({
   metriqueText: { fontFamily: fonts.bodyMedium, fontSize: 10, color: colors.textMuted },
   metriqueTextActive: { color: colors.onBackground },
   chartCard: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 },
+  breakdownCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  breakdownName: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.text, flexShrink: 1, marginRight: 12 },
+  breakdownValue: { fontFamily: fonts.monoSemiBold, fontSize: 13, color: colors.amber },
+  breakdownSub: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, marginTop: 2 },
+  empty: { textAlign: 'center', color: colors.textMuted, fontFamily: fonts.body, fontSize: 12, paddingVertical: 16 },
 });

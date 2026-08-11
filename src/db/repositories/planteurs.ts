@@ -66,6 +66,17 @@ export async function fusionnerPlanteursEnDouble(db: SQLiteDatabase): Promise<vo
   }
 }
 
+// Refuse la suppression tant que des pesées référencent ce planteur (la contrainte
+// de clé étrangère locale et distante l'empêcherait de toute façon, mais un message
+// clair vaut mieux qu'une exception SQLite brute).
+export async function deletePlanteur(db: SQLiteDatabase, id: string): Promise<void> {
+  const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM pesees WHERE planteur_id = ?', id);
+  if ((row?.count ?? 0) > 0) {
+    throw new Error('Impossible de supprimer ce planteur : des pesées lui sont déjà associées.');
+  }
+  await db.runAsync('DELETE FROM planteurs WHERE id = ?', id);
+}
+
 export interface PlanteurTonnage {
   planteurId: string;
   totalNet: number;

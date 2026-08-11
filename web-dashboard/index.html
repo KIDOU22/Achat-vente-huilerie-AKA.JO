@@ -120,6 +120,25 @@
 
     <div class="section-title">Planteurs</div>
     <div class="card"><table id="table-planteurs"><thead><tr><th>Nom</th><th>Village</th><th>Tonnage cumulé</th></tr></thead><tbody></tbody></table></div>
+
+    <div class="section-title">Export des données</div>
+    <div class="card" id="export-card">
+      <div class="grid cols-2">
+        <div class="field">
+          <label>Du</label>
+          <input type="date" id="export-from" />
+        </div>
+        <div class="field">
+          <label>Au</label>
+          <input type="date" id="export-to" />
+        </div>
+      </div>
+      <div id="export-error" class="error hidden"></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+        <button class="btn" id="export-achats-btn">Exporter les achats (Excel)</button>
+        <button class="btn" id="export-ventes-btn">Exporter les ventes (Excel)</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -138,6 +157,9 @@ const derivePassword = (id, code) => `akajo-${id.trim().toLowerCase()}-${code.tr
 let currentRole = null;
 let currentNom = '';
 let realtimeChannel = null;
+let allPesees = [];
+let allVentes = [];
+let allPlanteurs = [];
 
 const loginScreen = document.getElementById('login-screen');
 const dashScreen = document.getElementById('dash-screen');
@@ -215,10 +237,13 @@ async function loadAll() {
     sb.from('planteurs').select('*'),
   ]);
   const ventes = ventesResult.data || [];
-  renderStats(pesees || [], ventes);
-  renderAchats(pesees || []);
+  allPesees = pesees || [];
+  allVentes = ventes;
+  allPlanteurs = planteurs || [];
+  renderStats(allPesees, ventes);
+  renderAchats(allPesees, allPlanteurs);
   renderVentes(ventes);
-  renderPlanteurs(planteurs || [], pesees || []);
+  renderPlanteurs(allPlanteurs, allPesees);
 }
 
 function todayKey() {
@@ -255,12 +280,15 @@ function renderStats(pesees, ventes) {
   `).join('');
 }
 
-function renderAchats(pesees) {
+function renderAchats(pesees, planteurs) {
+  const nomParPlanteur = {};
+  for (const pl of planteurs) nomParPlanteur[pl.id] = pl.nom;
   const table = document.getElementById('table-achats');
-  table.querySelector('thead').innerHTML = `<tr><th>N° pesée</th><th>Chauffeur</th><th>Net</th><th>Prix/kg</th><th>Montant</th><th>Transport</th><th>Statut</th></tr>`;
+  table.querySelector('thead').innerHTML = `<tr><th>N° pesée</th><th>Planteur</th><th>Chauffeur</th><th>Net</th><th>Prix/kg</th><th>Montant</th><th>Transport</th><th>Statut</th></tr>`;
   table.querySelector('tbody').innerHTML = pesees.slice(0, 20).map((p) => `
     <tr>
       <td>${p.num_ticket}</td>
+      <td>${nomParPlanteur[p.planteur_id] || '—'}</td>
       <td>${p.chauffeur}</td>
       <td>${fmtKg(p.net)}</td>
       <td>${fmtF(p.prix_kg)}</td>
@@ -268,7 +296,7 @@ function renderAchats(pesees) {
       <td>${fmtF(p.montant_transport)}</td>
       <td><span class="pill ${p.paye ? 'paye' : 'impaye'}">${p.paye ? 'Payé' : 'Impayé'}</span></td>
     </tr>
-  `).join('') || `<tr><td class="muted" colspan="7">Aucune pesée</td></tr>`;
+  `).join('') || `<tr><td class="muted" colspan="8">Aucune pesée</td></tr>`;
 }
 
 function renderVentes(ventes) {
@@ -311,6 +339,144 @@ function renderPlanteurs(planteurs, pesees) {
       <td>${fmtT(tonnageByPlanteur[pl.id] || 0)}</td>
     </tr>
   `).join('') || `<tr><td class="muted" colspan="3">Aucun planteur</td></tr>`;
+}
+
+document.getElementById('export-achats-btn').addEventListener('click', exportAchats);
+document.getElementById('export-ventes-btn').addEventListener('click', exportVentes);
+
+function csvEscape(value) {
+  const s = value === null || value === undefined ? '' : String(value);
+  if (/[",;\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function toCSV(headers, rows) {
+  const lines = [headers.map(csvEscape).join(';')];
+  for (const row of rows) lines.push(row.map(csvEscape).join(';'));
+  return '\uFEFF' + lines.join('\r\n');
+}
+
+function downloadCSV(filename, content) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function dateForFilename(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function showExportError(message) {
+  const el = document.getElementById('export-error');
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+function getExportRange() {
+  const fromEl = document.getElementById('export-from');
+  const toEl = document.getElementById('export-to');
+  document.getElementById('export-error').classList.add('hidden');
+  if (!fromEl.value || !toEl.value) {
+    showExportError('Choisissez une date de début et une date de fin.');
+    return null;
+  }
+  const from = new Date(fromEl.value + 'T00:00:00');
+  const to = new Date(toEl.value + 'T23:59:59.999');
+  if (from > to) {
+    showExportError('La date de début doit précéder la date de fin.');
+    return null;
+  }
+  return { from, to };
+}
+
+async function exportAchats() {
+  const range = getExportRange();
+  if (!range) return;
+  const btn = document.getElementById('export-achats-btn');
+  btn.disabled = true;
+  try {
+    const { data, error } = await sb.from('pesees').select('*')
+      .gte('ts', range.from.toISOString())
+      .lte('ts', range.to.toISOString())
+      .order('ts', { ascending: true });
+    if (error) {
+      showExportError("Échec de l'export : " + error.message);
+      return;
+    }
+    const nomParPlanteur = {};
+    for (const pl of allPlanteurs) nomParPlanteur[pl.id] = pl.nom;
+    const headers = ['N° pesée', 'Date', 'Planteur', 'Chauffeur', 'Véhicule', 'Immatriculation', 'Poids chargé (kg)', 'Poids vide (kg)', 'Net (kg)', 'Prix/kg', 'Montant', 'Prix transport/kg', 'Montant transport', 'Statut paiement', 'Statut'];
+    const rows = (data || []).map((p) => [
+      p.num_ticket,
+      new Date(p.ts).toLocaleString('fr-FR'),
+      nomParPlanteur[p.planteur_id] || '—',
+      p.chauffeur,
+      p.type_vehicule,
+      p.immatriculation,
+      p.poids_charge,
+      p.poids_vide,
+      p.net,
+      p.prix_kg,
+      p.montant,
+      p.prix_transport_kg,
+      p.montant_transport,
+      p.paye ? 'Payé' : 'Impayé',
+      p.annulee ? 'Annulée' : 'Active',
+    ]);
+    downloadCSV(`achats_${dateForFilename(range.from)}_${dateForFilename(range.to)}.csv`, toCSV(headers, rows));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function exportVentes() {
+  const range = getExportRange();
+  if (!range) return;
+  const btn = document.getElementById('export-ventes-btn');
+  btn.disabled = true;
+  try {
+    const table = currentRole !== 'agent' ? 'ventes' : 'ventes_agent_view';
+    const { data, error } = await sb.from(table).select('*')
+      .gte('ts', range.from.toISOString())
+      .lte('ts', range.to.toISOString())
+      .order('ts', { ascending: true });
+    if (error) {
+      showExportError("Échec de l'export : " + error.message);
+      return;
+    }
+    let headers, rows;
+    if (currentRole !== 'agent') {
+      headers = ['N° pesée', 'Date', 'Client', 'Chauffeur', 'Véhicule', 'Immatriculation', 'Poids chargé (kg)', 'Poids vide (kg)', 'Net (kg)', 'Prix/litre', 'Montant', 'Prix transport/kg', 'Montant transport', 'Statut'];
+      rows = (data || []).map((v) => [
+        v.num_ticket,
+        new Date(v.ts).toLocaleString('fr-FR'),
+        v.client,
+        v.chauffeur,
+        v.type_vehicule,
+        v.immatriculation,
+        v.poids_charge,
+        v.poids_vide,
+        v.net,
+        v.prix_litre,
+        v.montant,
+        v.prix_transport_kg,
+        v.montant_transport,
+        v.annulee ? 'Annulée' : 'Active',
+      ]);
+    } else {
+      headers = ['N° pesée', 'Date', 'Client', 'Net (kg)'];
+      rows = (data || []).map((v) => [v.num_ticket, new Date(v.ts).toLocaleString('fr-FR'), v.client, v.net]);
+    }
+    downloadCSV(`ventes_${dateForFilename(range.from)}_${dateForFilename(range.to)}.csv`, toCSV(headers, rows));
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function subscribeRealtime() {
