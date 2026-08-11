@@ -21,6 +21,7 @@ type FormKind =
   | 'allouer'
   | 'depense'
   | 'retour'
+  | 'retour_banque'
   | 'transfert'
   | null;
 
@@ -101,6 +102,8 @@ export function CaisseScreen() {
         await enregistrerDepense(maCaisse.id, montantNum, motif);
       } else if (form === 'retour' && maCaisse) {
         await initierRetour(maCaisse.id, montantNum, motif);
+      } else if (form === 'retour_banque' && maCaisse && banque) {
+        await initierTransfert(maCaisse.id, banque.id, montantNum, motif);
       } else if (form === 'transfert' && maCaisse && cibleCaisseId) {
         await initierTransfert(maCaisse.id, cibleCaisseId, montantNum, motif);
       }
@@ -174,19 +177,6 @@ export function CaisseScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      {isManager && principale && (
-        <Card style={[styles.soldeCard, { borderColor: `${colors.oil}55` }]}>
-          <View style={styles.soldeHeader}>
-            <Wallet size={16} color={colors.oil} />
-            <Text style={styles.soldeLabel}>Caisse principale</Text>
-          </View>
-          <Text style={[styles.soldeValue, { color: colors.oil }]}>{formatFCFA(soldeCaisse(principale.id))}</Text>
-          <View style={styles.actionsRow}>
-            <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.oil} />} onPress={() => setForm('apport')} />
-          </View>
-        </Card>
-      )}
-
       {isManager && banque && (
         <Card style={[styles.soldeCard, { borderColor: `${colors.amber}55` }]}>
           <View style={styles.soldeHeader}>
@@ -210,6 +200,19 @@ export function CaisseScreen() {
         </Card>
       )}
 
+      {isManager && principale && (
+        <Card style={[styles.soldeCard, { borderColor: `${colors.oil}55` }]}>
+          <View style={styles.soldeHeader}>
+            <Wallet size={16} color={colors.oil} />
+            <Text style={styles.soldeLabel}>Caisse principale</Text>
+          </View>
+          <Text style={[styles.soldeValue, { color: colors.oil }]}>{formatFCFA(soldeCaisse(principale.id))}</Text>
+          <View style={styles.actionsRow}>
+            <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.oil} />} onPress={() => setForm('apport')} />
+          </View>
+        </Card>
+      )}
+
       {maCaisse && (
         <Card style={styles.soldeCard}>
           <View style={styles.soldeHeader}>
@@ -224,6 +227,13 @@ export function CaisseScreen() {
               icon={<CornerUpLeft size={13} color={colors.amber} />}
               onPress={() => setForm('retour')}
             />
+            {banque && (
+              <ActionChip
+                label="Vers la banque"
+                icon={<Landmark size={13} color={colors.amber} />}
+                onPress={() => setForm('retour_banque')}
+              />
+            )}
             <ActionChip
               label="Transférer"
               icon={<ArrowLeftRight size={13} color={colors.frond} />}
@@ -285,6 +295,7 @@ export function CaisseScreen() {
             {form === 'allouer' && 'Allocation'}
             {form === 'depense' && 'Nouvelle dépense'}
             {form === 'retour' && 'Retour vers la caisse principale'}
+            {form === 'retour_banque' && 'Transfert vers la banque'}
             {form === 'transfert' && 'Transfert'}
           </Text>
           <TextField label="Montant (F CFA)" value={montant} onChangeText={setMontant} keyboardType="number-pad" mono />
