@@ -1,7 +1,7 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { Plus, RotateCcw, ShieldCheck, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -12,7 +12,7 @@ import { getCaisseForUser } from '../db/repositories/caisses';
 import { logAudit } from '../db/repositories/audit';
 import { ROLE_LABELS, type Role, type User } from '../domain/types';
 import { syncUpdateProfile } from '../sync/auth';
-import { pushCaisse } from '../sync/push';
+import { pushCaisse, pushUser } from '../sync/push';
 import { colors, roleColors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -84,6 +84,15 @@ export function ComptesScreen() {
       setCode('');
       setRole('agent');
       await refresh();
+      // Sans cet envoi, le compte ne serait connu que de cet appareil : l'agent ne
+      // pourrait jamais se connecter la première fois depuis son propre téléphone.
+      const r = await pushUser(user).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert(
+          'Synchro cloud échouée (nouveau compte)',
+          `${r.error ?? 'Erreur inconnue'}\n\nCe compte ne pourra pas se connecter sur un autre téléphone tant que la synchro n'aura pas réussi.`
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -102,6 +111,7 @@ export function ComptesScreen() {
     });
     await refresh();
     syncUpdateProfile(user.identifiant, { actif: false }).catch(() => {});
+    pushUser({ ...user, actif: false }).catch(() => {});
   }
 
   function openReset(user: User) {
@@ -133,6 +143,13 @@ export function ComptesScreen() {
       });
       setResetTarget(null);
       await refresh();
+      const r = await pushUser(result).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert(
+          'Synchro cloud échouée (réinitialisation)',
+          `${r.error ?? 'Erreur inconnue'}\n\nLes nouveaux identifiant/code ne fonctionneront pas sur un autre téléphone tant que la synchro n'aura pas réussi.`
+        );
+      }
     } finally {
       setResetSaving(false);
     }
@@ -151,6 +168,7 @@ export function ComptesScreen() {
     });
     await refresh();
     syncUpdateProfile(user.identifiant, { role: newRole }).catch(() => {});
+    pushUser({ ...user, role: newRole }).catch(() => {});
   }
 
   return (

@@ -5,6 +5,7 @@ import { getCaisseForUser } from '../db/repositories/caisses';
 import { authenticate, changerIdentifiantEtCode, getUserById } from '../db/repositories/users';
 import type { User } from '../domain/types';
 import { syncSignIn, syncSignOut } from '../sync/auth';
+import { bootstrapLocalAccount } from '../sync/pull';
 import { pushCaisse } from '../sync/push';
 
 const SESSION_KEY = 'akajo_session_user_id';
@@ -71,7 +72,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!identifiant.trim() || !code.trim()) {
         return { ok: false, error: "Identifiant et code d'accès requis." };
       }
-      const user = await authenticate(db, identifiant, code);
+      let user = await authenticate(db, identifiant, code);
+      if (!user) {
+        // Inconnu localement : peut-être un compte créé (ou réinitialisé) par le
+        // gérant sur un autre appareil, jamais encore synchronisé ici — tente de le
+        // récupérer directement depuis le cloud avant d'abandonner.
+        await bootstrapLocalAccount(db, identifiant, code).catch(() => {});
+        user = await authenticate(db, identifiant, code);
+      }
       if (!user) {
         return { ok: false, error: "Identifiant ou code d'accès incorrect." };
       }

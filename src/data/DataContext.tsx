@@ -26,6 +26,7 @@ import {
   listMouvements,
   soldeCaisse,
 } from '../db/repositories/caisses';
+import { listUsers } from '../db/repositories/users';
 import type { Caisse, MouvementCaisse, Pesee, Planteur, Vente } from '../domain/types';
 import { supabase } from '../lib/supabase';
 import { pullAll } from '../sync/pull';
@@ -39,6 +40,7 @@ import {
   pushPesee,
   pushPlanteur,
   pushSetting,
+  pushUser,
   pushVente,
 } from '../sync/push';
 import { subscribeRealtime } from '../sync/realtime';
@@ -144,17 +146,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // pointer une pesée comme payée) mais pas encore arrivé sur Supabase se ferait
       // écraser par la valeur distante encore ancienne que le pull vient de
       // rapatrier, et redeviendrait "impayé" jusqu'au prochain cycle.
-      const [localCaisses, localPlanteurs, localPesees, localVentes] = await Promise.all([
+      // La repousse des comptes (pushUser) n'aboutit que depuis une session gérant
+      // (RLS) — depuis un autre rôle, elle échoue silencieusement sans conséquence :
+      // seul le gérant fait autorité sur les comptes.
+      const [localCaisses, localPlanteurs, localPesees, localVentes, localUsers] = await Promise.all([
         listCaisses(db),
         listPlanteurs(db),
         listPesees(db),
         listVentes(db),
+        listUsers(db),
       ]);
       await Promise.all([
         ...localCaisses.map((c) => pushCaisse(c).catch(() => {})),
         ...localPlanteurs.map((p) => pushPlanteur(p).catch(() => {})),
         ...localPesees.map((t) => pushPesee(t).catch(() => {})),
         ...localVentes.map((v) => pushVente(v).catch(() => {})),
+        ...localUsers.map((u) => pushUser(u).catch(() => {})),
       ]);
       await pullAll(db);
       if (!cancelled) await refreshRef.current();

@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { verifyCode } from '../auth/crypto';
 import { fusionnerCaissesUniquesEnDouble } from '../db/repositories/caisses';
 import { fusionnerPlanteursEnDouble } from '../db/repositories/planteurs';
 import { supabase } from '../lib/supabase';
@@ -16,7 +17,9 @@ export async function pullAll(db: SQLiteDatabase): Promise<void> {
 
   try {
     // Ordre important : les pesées référencent un planteur local (clé étrangère), et
-    // les mouvements référencent des caisses locales (clé étrangère implicite).
+    // les mouvements référencent des caisses locales (clé étrangère implicite). Les
+    // comptes d'abord : pullCaisses recherche l'utilisateur local par identifiant.
+    await pullUsers(db);
     await pullPlanteurs(db);
     await pullPesees(db);
     await pullVentes(db);
@@ -32,6 +35,74 @@ export async function pullAll(db: SQLiteDatabase): Promise<void> {
   } catch (err) {
     console.warn('[sync] pullAll a échoué :', err);
   }
+}
+
+interface LocalAccountRow {
+  id: string;
+  identifiant: string;
+  code_hash: string;
+  nom: string;
+  role: string;
+  actif: boolean;
+  doit_changer_code: boolean;
+  created_at: string;
+}
+
+// Une installation neuve amorce localement un gérant/agent de démonstration (mêmes
+// identifiants "gerant"/"bascule1" sur chaque appareil, avec un id local différent à
+// chaque fois). Si ce compte existe réellement côté cloud sous un autre id local, cet
+// ancien doublon de démonstration doit céder la place : sinon la contrainte
+// d'unicité locale sur l'identifiant bloquerait la synchro de tous les comptes à
+// chaque cycle (created_by n'étant qu'un champ texte libre sur pesées/ventes, aucune
+// réattribution de clé étrangère n'est nécessaire avant de le supprimer).
+async function upsertLocalUserRow(db: SQLiteDatabase, row: LocalAccountRow): Promise<void> {
+  await db.runAsync('DELETE FROM users WHERE lower(identifiant) = lower(?) AND id != ?', row.identifiant, row.id);
+  await db.runAsync(
+    `INSERT INTO users (id, identifiant, code_hash, nom, role, actif, doit_changer_code, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       identifiant = excluded.identifiant, code_hash = excluded.code_hash, nom = excluded.nom,
+       role = excluded.role, actif = excluded.actif, doit_changer_code = excluded.doit_changer_code`,
+    row.id,
+    row.identifiant,
+    row.code_hash,
+    row.nom,
+    row.role,
+    row.actif ? 1 : 0,
+    row.doit_changer_code ? 1 : 0,
+    new Date(row.created_at).getTime()
+  );
+}
+
+async function pullUsers(db: SQLiteDatabase): Promise<void> {
+  if (!supabase) return;
+  const { data, error } = await supabase.from('local_accounts').select('*');
+  if (error || !data) return;
+  for (const row of data as LocalAccountRow[]) {
+    await upsertLocalUserRow(db, row);
+  }
+}
+
+// Récupère un compte créé (ou réinitialisé) par le gérant sur un autre appareil et
+// jamais encore vu localement ici — utilisable AVANT toute session Supabase
+// (contrairement à pullAll/pullUsers ci-dessus, qui exigent une session), car
+// "local_accounts" reste lisible sans authentification (voir la migration
+// 0011_local_accounts.sql). Vérifie le code fourni avant d'importer quoi que ce soit
+// localement. Appelé par AuthContext.login() uniquement quand l'authentification
+// locale a déjà échoué.
+export async function bootstrapLocalAccount(db: SQLiteDatabase, identifiant: string, code: string): Promise<boolean> {
+  if (!supabase) return false;
+  const { data, error } = await supabase
+    .from('local_accounts')
+    .select('*')
+    .ilike('identifiant', identifiant.trim())
+    .maybeSingle();
+  if (error || !data) return false;
+  const row = data as LocalAccountRow;
+  const ok = await verifyCode(code.trim(), row.code_hash);
+  if (!ok) return false;
+  await upsertLocalUserRow(db, row);
+  return true;
 }
 
 async function pullPlanteurs(db: SQLiteDatabase): Promise<void> {

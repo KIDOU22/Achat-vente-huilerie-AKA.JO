@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { Caisse, MouvementCaisse, MouvementStatut, Pesee, Planteur, Vente } from '../domain/types';
+import type { Caisse, MouvementCaisse, MouvementStatut, Pesee, Planteur, User, Vente } from '../domain/types';
 
 // Toutes les fonctions ci-dessous sont "best-effort" : si Supabase n'est pas
 // configuré ou si l'appareil est hors-ligne, l'erreur est journalisée sans jamais
@@ -52,6 +52,37 @@ export async function pushDeletePlanteur(id: string): Promise<PushResult> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn('[sync] pushDeletePlanteur a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+// Envoie un compte local (créé, réinitialisé ou modifié par le gérant) vers
+// "local_accounts" — la seule façon pour un autre appareil de reconnaître cet
+// identifiant/code avant même la toute première connexion de son titulaire (voir
+// bootstrapLocalAccount dans sync/pull.ts). Écriture réservée au gérant côté RLS :
+// un push depuis un autre rôle échoue silencieusement (sans risque, juste inutile).
+export async function pushUser(u: User): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(u.id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('local_accounts').upsert({
+      id: u.id,
+      identifiant: u.identifiant.trim().toLowerCase(),
+      code_hash: u.codeHash,
+      nom: u.nom,
+      role: u.role,
+      actif: u.actif,
+      doit_changer_code: u.doitChangerCode,
+      created_at: new Date(u.createdAt).toISOString(),
+    });
+    if (error) {
+      console.warn('[sync] pushUser a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushUser a échoué :', err);
     return { ok: false, error: message };
   }
 }
