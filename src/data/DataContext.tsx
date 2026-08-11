@@ -132,11 +132,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     async function syncNow() {
       await pullAll(db);
-      // Pousse les caisses locales (principale + créées avant que la synchro ne
-      // fonctionne) vers le cloud — upsert idempotent, sans risque à répéter.
-      const localCaisses = await listCaisses(db);
+      // Pousse les caisses et planteurs locaux (créés au premier lancement via
+      // seedIfEmpty, jamais explicitement "créés" par l'utilisateur donc jamais
+      // poussés autrement) vers le cloud — upsert idempotent, sans risque à répéter.
+      // Sans ça, une pesée référençant un planteur jamais synchronisé viole la
+      // contrainte de clé étrangère côté Supabase et échoue silencieusement.
+      const [localCaisses, localPlanteurs] = await Promise.all([listCaisses(db), listPlanteurs(db)]);
       for (const c of localCaisses) {
         pushCaisse(c).catch(() => {});
+      }
+      for (const p of localPlanteurs) {
+        pushPlanteur(p).catch(() => {});
       }
       if (!cancelled) await refreshRef.current();
     }
@@ -172,10 +178,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!currentUser) throw new Error('Utilisateur non connecté');
       const t = await createPesee(db, { ...input, userId: currentUser.id, userNom: currentUser.nom });
       await refresh();
-      pushPesee(t).catch(() => {});
+      // Pousse d'abord le planteur référencé (au cas où il ne l'aurait jamais été,
+      // ex: planteurs de démo créés au premier lancement) : sinon la pesée viole la
+      // clé étrangère côté Supabase et échoue silencieusement.
+      const planteur = planteurs.find((p) => p.id === input.planteurId);
+      (async () => {
+        if (planteur) await pushPlanteur(planteur).catch(() => {});
+        await pushPesee(t).catch(() => {});
+      })();
       return t;
     },
-    [db, refresh, currentUser]
+    [db, refresh, currentUser, planteurs]
   );
 
   const enregistrerVente = useCallback(
