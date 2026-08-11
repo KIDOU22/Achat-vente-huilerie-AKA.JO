@@ -133,17 +133,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     async function syncNow() {
       await pullAll(db);
-      // Pousse les caisses et planteurs locaux (créés au premier lancement via
-      // seedIfEmpty, jamais explicitement "créés" par l'utilisateur donc jamais
-      // poussés autrement) vers le cloud — upsert idempotent, sans risque à répéter.
-      // Sans ça, une pesée référençant un planteur jamais synchronisé viole la
-      // contrainte de clé étrangère côté Supabase et échoue silencieusement.
-      const [localCaisses, localPlanteurs] = await Promise.all([listCaisses(db), listPlanteurs(db)]);
+      // Repousse systématiquement tout ce qui existe localement — upsert idempotent,
+      // sans risque à répéter. Rattrape à la fois les entités jamais explicitement
+      // "créées" par l'utilisateur (caisses/planteurs de démo depuis seedIfEmpty) et
+      // toute pesée/vente restée bloquée après un échec d'envoi passé (panne réseau,
+      // contrainte serveur temporairement invalide...) qui n'aurait jamais été
+      // réessayée autrement.
+      const [localCaisses, localPlanteurs, localPesees, localVentes] = await Promise.all([
+        listCaisses(db),
+        listPlanteurs(db),
+        listPesees(db),
+        listVentes(db),
+      ]);
       for (const c of localCaisses) {
         pushCaisse(c).catch(() => {});
       }
       for (const p of localPlanteurs) {
         pushPlanteur(p).catch(() => {});
+      }
+      for (const t of localPesees) {
+        pushPesee(t).catch(() => {});
+      }
+      for (const v of localVentes) {
+        pushVente(v).catch(() => {});
       }
       if (!cancelled) await refreshRef.current();
     }
