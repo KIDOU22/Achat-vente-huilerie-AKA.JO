@@ -135,20 +135,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     let unsubscribeRealtime: (() => void) | undefined;
 
-    async function syncNow() {
-      // Repousse d'abord systématiquement tout ce qui existe localement — upsert
-      // idempotent, sans risque à répéter. Rattrape à la fois les entités jamais
-      // explicitement "créées" par l'utilisateur (caisses/planteurs de démo depuis
-      // seedIfEmpty) et toute pesée/vente restée bloquée après un échec d'envoi passé
-      // (panne réseau, contrainte serveur temporairement invalide...) qui n'aurait
-      // jamais été réessayée autrement. Important : ceci doit se terminer AVANT le
-      // pullAll ci-dessous — sinon un changement local tout juste effectué (ex:
-      // pointer une pesée comme payée) mais pas encore arrivé sur Supabase se ferait
-      // écraser par la valeur distante encore ancienne que le pull vient de
-      // rapatrier, et redeviendrait "impayé" jusqu'au prochain cycle.
-      // La repousse des comptes (pushUser) n'aboutit que depuis une session gérant
-      // (RLS) — depuis un autre rôle, elle échoue silencieusement sans conséquence :
-      // seul le gérant fait autorité sur les comptes.
+    // Repousse systématiquement tout ce qui existe localement — upsert idempotent,
+    // sans risque à répéter. Rattrape à la fois les entités jamais explicitement
+    // "créées" par l'utilisateur (caisses/planteurs de démo depuis seedIfEmpty) et
+    // toute pesée/vente restée bloquée après un échec d'envoi passé (panne réseau,
+    // contrainte serveur temporairement invalide...) qui n'aurait jamais été
+    // réessayée autrement. La repousse des comptes (pushUser) n'aboutit que depuis
+    // une session gérant (RLS) — depuis un autre rôle, elle échoue silencieusement
+    // sans conséquence : seul le gérant fait autorité sur les comptes.
+    // IMPORTANT : un upsert déclenche un événement Realtime même quand la valeur
+    // envoyée est identique à celle déjà en base (c'est une commande UPDATE, peu
+    // importe si elle change quelque chose) — appeler cette fonction à chaque
+    // événement Realtime créerait donc une boucle infinie (chaque repousse
+    // déclenchant l'événement qui déclenche la repousse suivante), provoquant un
+    // clignotement continu de l'affichage. Elle ne doit donc JAMAIS être appelée par
+    // le gestionnaire d'événements Realtime ci-dessous — seulement au démarrage, à la
+    // connexion, et à intervalle régulier.
+    async function pushPending() {
       const [localCaisses, localPlanteurs, localPesees, localVentes, localUsers] = await Promise.all([
         listCaisses(db),
         listPlanteurs(db),
@@ -163,20 +166,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         ...localVentes.map((v) => pushVente(v).catch(() => {})),
         ...localUsers.map((u) => pushUser(u).catch(() => {})),
       ]);
+    }
+
+    // Ne fait que tirer (jamais d'écriture) — sûr à appeler aussi souvent que
+    // Realtime le déclenche, puisque ça ne peut jamais provoquer un nouvel événement.
+    async function pullAndRefresh() {
       await pullAll(db);
       if (!cancelled) await refreshRef.current();
     }
 
-    syncNow();
+    // Important : la repousse doit se terminer AVANT le pull — sinon un changement
+    // local tout juste effectué (ex: pointer une pesée comme payée) mais pas encore
+    // arrivé sur Supabase se ferait écraser par la valeur distante encore ancienne
+    // que le pull vient de rapatrier, et redeviendrait "impayé" jusqu'au prochain
+    // cycle.
+    async function fullSync() {
+      await pushPending().catch(() => {});
+      await pullAndRefresh();
+    }
+
+    fullSync();
     unsubscribeRealtime = subscribeRealtime(() => {
-      syncNow();
+      pullAndRefresh();
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN') syncNow();
+      if (event === 'SIGNED_IN') fullSync();
     });
 
+    // Filet de sécurité périodique (pas déclenché par Realtime, donc sans risque de
+    // boucle) pour rattraper les échecs d'envoi qui n'auraient jamais provoqué
+    // d'événement Realtime chez les autres appareils (ex: appareil resté hors-ligne).
+    const pushInterval = setInterval(() => {
+      pushPending().catch(() => {});
+    }, 5 * 60 * 1000);
+
     return () => {
+      clearInterval(pushInterval);
       cancelled = true;
       unsubscribeRealtime?.();
       authListener.subscription.unsubscribe();

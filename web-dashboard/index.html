@@ -480,11 +480,20 @@ async function exportVentes() {
 }
 
 function subscribeRealtime() {
+  // Regroupe les rafales d'événements rapprochés (plusieurs pesées créées coup sur
+  // coup, ou un appareil qui repousse ses données en attente) en un seul rechargement
+  // au lieu de vider/reconstruire les tableaux à chaque événement — sinon la page
+  // clignote et le défilement dans la liste des planteurs saute en permanence.
+  let reloadTimer = null;
+  const scheduleReload = () => {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(loadAll, 800);
+  };
   realtimeChannel = sb
     .channel('akajo-dashboard')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'pesees' }, loadAll)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'ventes' }, loadAll)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'planteurs' }, loadAll)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pesees' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ventes' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'planteurs' }, scheduleReload)
     .subscribe();
 }
 
