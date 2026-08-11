@@ -16,6 +16,7 @@ export interface User {
   nom: string;
   role: Role;
   actif: boolean;
+  doitChangerCode: boolean;
   createdAt: number;
 }
 

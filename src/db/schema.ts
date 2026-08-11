@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   nom TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('gerant', 'agent')),
   actif INTEGER NOT NULL DEFAULT 1,
+  doit_changer_code INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 
@@ -129,6 +130,7 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'ventes', 'annulee', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(db, 'ventes', 'annulee_par', 'TEXT');
   await ensureColumn(db, 'ventes', 'motif_annulation', 'TEXT');
+  await ensureColumn(db, 'users', 'doit_changer_code', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(db, 'caisses', 'owner_identifiant', 'TEXT');
   await seedIfEmpty(db);
   await ensureCaissesForExistingUsers(db);

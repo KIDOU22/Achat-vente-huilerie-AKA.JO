@@ -5,11 +5,12 @@ import { Button } from '../components/ui/Button';
 import { TextField } from '../components/ui/TextField';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
+import { OnboardingScreen } from './OnboardingScreen';
 
 const logo = require('../../assets/images/logo-akajo.png');
 
 export function LoginScreen() {
-  const { login } = useAuth();
+  const { login, pendingOnboarding } = useAuth();
   const [identifiant, setIdentifiant] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -29,6 +30,10 @@ export function LoginScreen() {
     if (result.syncError) {
       Alert.alert('Synchro cloud indisponible', result.syncError);
     }
+  }
+
+  if (pendingOnboarding) {
+    return <OnboardingScreen user={pendingOnboarding} />;
   }
 
   return (
