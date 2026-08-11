@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { hashCode } from '../auth/crypto';
 import { uid } from '../domain/format';
+import { fusionnerCaissesUniquesEnDouble } from './repositories/caisses';
 
 export const DATABASE_NAME = 'huilerie-akajo.db';
 
@@ -135,6 +136,7 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'caisses', 'owner_identifiant', 'TEXT');
   await seedIfEmpty(db);
   await ensureCaissesForExistingUsers(db);
+  await fusionnerCaissesUniquesEnDouble(db);
 }
 
 // SQLite ne permet pas de modifier une contrainte CHECK existante avec ALTER TABLE :

@@ -63,13 +63,37 @@ export async function listCaisses(db: SQLiteDatabase): Promise<Caisse[]> {
 }
 
 export async function getCaissePrincipale(db: SQLiteDatabase): Promise<Caisse | null> {
-  const row = await db.getFirstAsync<CaisseRow>("SELECT * FROM caisses WHERE type = 'principale' LIMIT 1");
+  const row = await db.getFirstAsync<CaisseRow>(
+    "SELECT * FROM caisses WHERE type = 'principale' ORDER BY created_at ASC, id ASC LIMIT 1"
+  );
   return row ? toCaisse(row) : null;
 }
 
 export async function getCaisseBanque(db: SQLiteDatabase): Promise<Caisse | null> {
-  const row = await db.getFirstAsync<CaisseRow>("SELECT * FROM caisses WHERE type = 'banque' LIMIT 1");
+  const row = await db.getFirstAsync<CaisseRow>(
+    "SELECT * FROM caisses WHERE type = 'banque' ORDER BY created_at ASC, id ASC LIMIT 1"
+  );
   return row ? toCaisse(row) : null;
+}
+
+// Deux appareils réinstallés avant que la synchro cloud ne fonctionne ont pu chacun
+// créer leur propre caisse "principale"/"banque" (normalement uniques). Fusionne les
+// doublons vers le plus ancien : réattribue ses mouvements puis supprime les autres.
+// Idempotent — sans effet si un seul exemplaire de chaque existe déjà.
+export async function fusionnerCaissesUniquesEnDouble(db: SQLiteDatabase): Promise<void> {
+  for (const type of ['principale', 'banque'] as const) {
+    const rows = await db.getAllAsync<{ id: string }>(
+      'SELECT id FROM caisses WHERE type = ? ORDER BY created_at ASC, id ASC',
+      type
+    );
+    if (rows.length <= 1) continue;
+    const [keep, ...extras] = rows;
+    for (const extra of extras) {
+      await db.runAsync('UPDATE mouvements_caisse SET caisse_from_id = ? WHERE caisse_from_id = ?', keep.id, extra.id);
+      await db.runAsync('UPDATE mouvements_caisse SET caisse_to_id = ? WHERE caisse_to_id = ?', keep.id, extra.id);
+      await db.runAsync('DELETE FROM caisses WHERE id = ?', extra.id);
+    }
+  }
 }
 
 export async function getCaisseForUser(db: SQLiteDatabase, userId: string): Promise<Caisse | null> {
