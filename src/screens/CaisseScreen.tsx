@@ -22,6 +22,7 @@ type FormKind =
   | 'depense'
   | 'retour'
   | 'retour_banque'
+  | 'principale_vers_banque'
   | 'transfert'
   | null;
 
@@ -104,6 +105,8 @@ export function CaisseScreen() {
         await initierRetour(maCaisse.id, montantNum, motif);
       } else if (form === 'retour_banque' && maCaisse && banque) {
         await initierTransfert(maCaisse.id, banque.id, montantNum, motif);
+      } else if (form === 'principale_vers_banque' && principale && banque) {
+        await initierTransfert(principale.id, banque.id, montantNum, motif);
       } else if (form === 'transfert' && maCaisse && cibleCaisseId) {
         await initierTransfert(maCaisse.id, cibleCaisseId, montantNum, motif);
       }
@@ -209,6 +212,13 @@ export function CaisseScreen() {
           <Text style={[styles.soldeValue, { color: colors.oil }]}>{formatFCFA(soldeCaisse(principale.id))}</Text>
           <View style={styles.actionsRow}>
             <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.oil} />} onPress={() => setForm('apport')} />
+            {banque && (
+              <ActionChip
+                label="Vers la banque"
+                icon={<Landmark size={13} color={colors.amber} />}
+                onPress={() => setForm('principale_vers_banque')}
+              />
+            )}
           </View>
         </Card>
       )}
@@ -296,6 +306,7 @@ export function CaisseScreen() {
             {form === 'depense' && 'Nouvelle dépense'}
             {form === 'retour' && 'Retour vers la caisse principale'}
             {form === 'retour_banque' && 'Transfert vers la banque'}
+            {form === 'principale_vers_banque' && 'Caisse principale → banque'}
             {form === 'transfert' && 'Transfert'}
           </Text>
           <TextField label="Montant (F CFA)" value={montant} onChangeText={setMontant} keyboardType="number-pad" mono />
