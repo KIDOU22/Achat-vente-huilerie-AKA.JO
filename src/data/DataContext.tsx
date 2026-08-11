@@ -134,31 +134,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     let unsubscribeRealtime: (() => void) | undefined;
 
     async function syncNow() {
-      await pullAll(db);
-      // Repousse systématiquement tout ce qui existe localement — upsert idempotent,
-      // sans risque à répéter. Rattrape à la fois les entités jamais explicitement
-      // "créées" par l'utilisateur (caisses/planteurs de démo depuis seedIfEmpty) et
-      // toute pesée/vente restée bloquée après un échec d'envoi passé (panne réseau,
-      // contrainte serveur temporairement invalide...) qui n'aurait jamais été
-      // réessayée autrement.
+      // Repousse d'abord systématiquement tout ce qui existe localement — upsert
+      // idempotent, sans risque à répéter. Rattrape à la fois les entités jamais
+      // explicitement "créées" par l'utilisateur (caisses/planteurs de démo depuis
+      // seedIfEmpty) et toute pesée/vente restée bloquée après un échec d'envoi passé
+      // (panne réseau, contrainte serveur temporairement invalide...) qui n'aurait
+      // jamais été réessayée autrement. Important : ceci doit se terminer AVANT le
+      // pullAll ci-dessous — sinon un changement local tout juste effectué (ex:
+      // pointer une pesée comme payée) mais pas encore arrivé sur Supabase se ferait
+      // écraser par la valeur distante encore ancienne que le pull vient de
+      // rapatrier, et redeviendrait "impayé" jusqu'au prochain cycle.
       const [localCaisses, localPlanteurs, localPesees, localVentes] = await Promise.all([
         listCaisses(db),
         listPlanteurs(db),
         listPesees(db),
         listVentes(db),
       ]);
-      for (const c of localCaisses) {
-        pushCaisse(c).catch(() => {});
-      }
-      for (const p of localPlanteurs) {
-        pushPlanteur(p).catch(() => {});
-      }
-      for (const t of localPesees) {
-        pushPesee(t).catch(() => {});
-      }
-      for (const v of localVentes) {
-        pushVente(v).catch(() => {});
-      }
+      await Promise.all([
+        ...localCaisses.map((c) => pushCaisse(c).catch(() => {})),
+        ...localPlanteurs.map((p) => pushPlanteur(p).catch(() => {})),
+        ...localPesees.map((t) => pushPesee(t).catch(() => {})),
+        ...localVentes.map((v) => pushVente(v).catch(() => {})),
+      ]);
+      await pullAll(db);
       if (!cancelled) await refreshRef.current();
     }
 
@@ -265,7 +263,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
       await refresh();
-      pushPayeStatus(id, paye).catch(() => {});
+      const r = await pushPayeStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (statut paiement)', r.error ?? 'Erreur inconnue');
+      }
     },
     [db, refresh, currentUser, pesees, caisses]
   );
