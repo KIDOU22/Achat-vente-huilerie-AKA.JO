@@ -38,6 +38,34 @@ export async function createPlanteur(
   return { id, nom: input.nom.trim(), village, tel, createdAt };
 }
 
+// Chaque réinstallation de l'app (avant que la synchro cloud ne fonctionne) a
+// recréé les planteurs de démo (mêmes nom/village/tel) avec un nouvel identifiant —
+// une fois synchronisés, ces doublons se sont retrouvés côté cloud puis propagés
+// sur tous les appareils. Fusionne les planteurs strictement identiques (nom,
+// village, tel) : garde le plus ancien, réattribue les pesées des autres, puis les
+// supprime. Idempotent — sans effet si aucun doublon.
+export async function fusionnerPlanteursEnDouble(db: SQLiteDatabase): Promise<void> {
+  const groups = await db.getAllAsync<{ nom: string; village: string; tel: string; count: number }>(
+    `SELECT nom, village, tel, COUNT(*) as count FROM planteurs
+     GROUP BY lower(trim(nom)), village, tel
+     HAVING COUNT(*) > 1`
+  );
+  for (const g of groups) {
+    const rows = await db.getAllAsync<{ id: string }>(
+      `SELECT id FROM planteurs WHERE lower(trim(nom)) = lower(trim(?)) AND village = ? AND tel = ?
+       ORDER BY created_at ASC, id ASC`,
+      g.nom,
+      g.village,
+      g.tel
+    );
+    const [keep, ...extras] = rows;
+    for (const extra of extras) {
+      await db.runAsync('UPDATE pesees SET planteur_id = ? WHERE planteur_id = ?', keep.id, extra.id);
+      await db.runAsync('DELETE FROM planteurs WHERE id = ?', extra.id);
+    }
+  }
+}
+
 export interface PlanteurTonnage {
   planteurId: string;
   totalNet: number;

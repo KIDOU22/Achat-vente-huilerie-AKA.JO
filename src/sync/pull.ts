@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { fusionnerCaissesUniquesEnDouble } from '../db/repositories/caisses';
+import { fusionnerPlanteursEnDouble } from '../db/repositories/planteurs';
 import { supabase } from '../lib/supabase';
 
 // Tire les données distantes (déjà filtrées par les règles RLS côté serveur — un
@@ -23,9 +24,11 @@ export async function pullAll(db: SQLiteDatabase): Promise<void> {
     await pullCaisses(db);
     await pullMouvements(db);
     // Deux appareils réinstallés avant que la synchro ne fonctionne ont pu chacun
-    // créer leur propre caisse "principale"/"banque" — une synchro peut donc en
-    // ramener plusieurs : on les fusionne à chaque fois par sécurité.
+    // créer leur propre caisse "principale"/"banque", ou les mêmes planteurs de
+    // démo — une synchro peut donc en ramener plusieurs : on les fusionne à chaque
+    // fois par sécurité.
     await fusionnerCaissesUniquesEnDouble(db);
+    await fusionnerPlanteursEnDouble(db);
   } catch (err) {
     console.warn('[sync] pullAll a échoué :', err);
   }
