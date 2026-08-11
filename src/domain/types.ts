@@ -90,7 +90,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   agent: 'Agent pont-bascule',
 };
 
-export type CaisseType = 'principale' | 'secondaire';
+export type CaisseType = 'principale' | 'secondaire' | 'banque';
 
 export interface Caisse {
   id: string;

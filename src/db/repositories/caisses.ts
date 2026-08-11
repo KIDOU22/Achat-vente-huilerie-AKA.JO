@@ -67,6 +67,11 @@ export async function getCaissePrincipale(db: SQLiteDatabase): Promise<Caisse | 
   return row ? toCaisse(row) : null;
 }
 
+export async function getCaisseBanque(db: SQLiteDatabase): Promise<Caisse | null> {
+  const row = await db.getFirstAsync<CaisseRow>("SELECT * FROM caisses WHERE type = 'banque' LIMIT 1");
+  return row ? toCaisse(row) : null;
+}
+
 export async function getCaisseForUser(db: SQLiteDatabase, userId: string): Promise<Caisse | null> {
   const row = await db.getFirstAsync<CaisseRow>('SELECT * FROM caisses WHERE user_id = ?', userId);
   return row ? toCaisse(row) : null;

@@ -1,5 +1,5 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import { ArrowLeftRight, Check, CornerUpLeft, Minus, Plus, Wallet } from 'lucide-react-native';
+import { ArrowLeftRight, Check, CornerUpLeft, Landmark, Minus, Plus, Wallet } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
@@ -13,7 +13,16 @@ import { MOUVEMENT_TYPE_LABELS, type Caisse, type MouvementCaisse, type User } f
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
-type FormKind = 'apport' | 'allouer' | 'depense' | 'retour' | 'transfert' | null;
+type FormKind =
+  | 'apport'
+  | 'apport_banque'
+  | 'transfert_banque_vers'
+  | 'transfert_banque_depuis'
+  | 'allouer'
+  | 'depense'
+  | 'retour'
+  | 'transfert'
+  | null;
 
 export function CaisseScreen() {
   const db = useSQLiteContext();
@@ -51,14 +60,19 @@ export function CaisseScreen() {
     (c: Caisse | undefined): string => {
       if (!c) return '—';
       if (c.type === 'principale') return 'Caisse principale';
+      if (c.type === 'banque') return 'Banque';
       return userById(c.userId)?.nom ?? c.ownerIdentifiant ?? 'Utilisateur';
     },
     [userById]
   );
 
   const principale = caisses.find((c) => c.type === 'principale');
+  const banque = caisses.find((c) => c.type === 'banque');
   const maCaisse = caisses.find((c) => c.userId === currentUser?.id);
   const autresCaisses = caisses.filter((c) => c.type === 'secondaire' && c.id !== maCaisse?.id);
+  // Cibles possibles pour un transfert impliquant la banque : la caisse principale +
+  // toutes les caisses secondaires (jamais la banque elle-même).
+  const ciblesBanque = caisses.filter((c) => c.type === 'principale' || c.type === 'secondaire');
 
   function resetForm() {
     setForm(null);
@@ -74,6 +88,12 @@ export function CaisseScreen() {
     try {
       if (form === 'apport' && principale) {
         await enregistrerApport(principale.id, montantNum, motif);
+      } else if (form === 'apport_banque' && banque) {
+        await enregistrerApport(banque.id, montantNum, motif);
+      } else if (form === 'transfert_banque_vers' && banque && cibleCaisseId) {
+        await initierTransfert(banque.id, cibleCaisseId, montantNum, motif);
+      } else if (form === 'transfert_banque_depuis' && banque && cibleCaisseId) {
+        await initierTransfert(cibleCaisseId, banque.id, montantNum, motif);
       } else if (form === 'allouer' && cibleCaisseId) {
         await allouerCaisse(cibleCaisseId, montantNum, motif);
       } else if (form === 'depense' && maCaisse) {
@@ -104,10 +124,36 @@ export function CaisseScreen() {
     () => mouvements.filter((m) => m.type === 'retour' && m.statut === 'en_attente'),
     [mouvements]
   );
-  // Transferts en attente d'acceptation par le destinataire (moi).
+  // Transferts en attente d'acceptation par le destinataire (moi) — sauf ceux
+  // impliquant la banque, réservés au Gérant (voir banqueTransfertsEnAttente).
   const transfertsRecus = useMemo(
-    () => mouvements.filter((m) => m.type === 'transfert' && m.statut === 'en_attente' && m.caisseToId === maCaisse?.id),
-    [mouvements, maCaisse]
+    () =>
+      mouvements.filter(
+        (m) =>
+          m.type === 'transfert' &&
+          m.statut === 'en_attente' &&
+          m.caisseToId === maCaisse?.id &&
+          m.caisseFromId !== banque?.id
+      ),
+    [mouvements, maCaisse, banque]
+  );
+  // Transferts impliquant la banque, en attente de validation par le Gérant.
+  const banqueTransfertsEnAttente = useMemo(
+    () =>
+      mouvements.filter(
+        (m) =>
+          m.type === 'transfert' &&
+          m.statut === 'en_attente' &&
+          (m.caisseFromId === banque?.id || m.caisseToId === banque?.id)
+      ),
+    [mouvements, banque]
+  );
+  const historiqueBanque = useMemo(
+    () =>
+      mouvements.filter(
+        (m) => m.statut !== 'en_attente' && (m.caisseFromId === banque?.id || m.caisseToId === banque?.id)
+      ),
+    [mouvements, banque]
   );
   // Mes propres opérations en attente (retour vers la principale, ou transfert envoyé).
   const mesEnAttente = useMemo(
@@ -137,6 +183,29 @@ export function CaisseScreen() {
           <Text style={[styles.soldeValue, { color: colors.oil }]}>{formatFCFA(soldeCaisse(principale.id))}</Text>
           <View style={styles.actionsRow}>
             <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.oil} />} onPress={() => setForm('apport')} />
+          </View>
+        </Card>
+      )}
+
+      {isManager && banque && (
+        <Card style={[styles.soldeCard, { borderColor: `${colors.amber}55` }]}>
+          <View style={styles.soldeHeader}>
+            <Landmark size={16} color={colors.amber} />
+            <Text style={styles.soldeLabel}>Banque</Text>
+          </View>
+          <Text style={[styles.soldeValue, { color: colors.amber }]}>{formatFCFA(soldeCaisse(banque.id))}</Text>
+          <View style={styles.actionsRow}>
+            <ActionChip label="Alimenter (dépôt)" icon={<Plus size={13} color={colors.amber} />} onPress={() => setForm('apport_banque')} />
+            <ActionChip
+              label="Vers un compte"
+              icon={<ArrowLeftRight size={13} color={colors.amber} />}
+              onPress={() => setForm('transfert_banque_vers')}
+            />
+            <ActionChip
+              label="Depuis un compte"
+              icon={<CornerUpLeft size={13} color={colors.amber} />}
+              onPress={() => setForm('transfert_banque_depuis')}
+            />
           </View>
         </Card>
       )}
@@ -177,13 +246,21 @@ export function CaisseScreen() {
         </Card>
       )}
 
-      {(form === 'allouer' || form === 'transfert') && (
+      {(form === 'allouer' || form === 'transfert' || form === 'transfert_banque_vers' || form === 'transfert_banque_depuis') && (
         <Card style={{ gap: 10 }}>
           <Text style={styles.cardTitle}>
-            {form === 'allouer' ? 'Choisir le destinataire' : 'Transférer à…'}
+            {form === 'allouer' && 'Choisir le destinataire'}
+            {form === 'transfert' && 'Transférer à…'}
+            {form === 'transfert_banque_vers' && 'Vers quel compte ?'}
+            {form === 'transfert_banque_depuis' && 'Depuis quel compte ?'}
           </Text>
           <View style={styles.chipsWrap}>
-            {(form === 'allouer' ? caisses.filter((c) => c.type === 'secondaire') : autresCaisses).map((c) => (
+            {(form === 'allouer'
+              ? caisses.filter((c) => c.type === 'secondaire')
+              : form === 'transfert'
+                ? autresCaisses
+                : ciblesBanque
+            ).map((c) => (
               <Pressable
                 key={c.id}
                 onPress={() => setCibleCaisseId(c.id)}
@@ -202,6 +279,9 @@ export function CaisseScreen() {
         <Card style={{ gap: 10 }}>
           <Text style={styles.cardTitle}>
             {form === 'apport' && 'Alimenter la caisse principale'}
+            {form === 'apport_banque' && 'Alimenter la banque'}
+            {form === 'transfert_banque_vers' && 'Transfert banque → compte'}
+            {form === 'transfert_banque_depuis' && 'Transfert compte → banque'}
             {form === 'allouer' && 'Allocation'}
             {form === 'depense' && 'Nouvelle dépense'}
             {form === 'retour' && 'Retour vers la caisse principale'}
@@ -223,7 +303,8 @@ export function CaisseScreen() {
               disabled={
                 !montant ||
                 Number(montant.replace(',', '.')) <= 0 ||
-                ((form === 'allouer' || form === 'transfert') && !cibleCaisseId) ||
+                ((form === 'allouer' || form === 'transfert' || form === 'transfert_banque_vers' || form === 'transfert_banque_depuis') &&
+                  !cibleCaisseId) ||
                 (form === 'depense' && !motif.trim())
               }
               color={colors.frond}
@@ -237,6 +318,15 @@ export function CaisseScreen() {
         <View style={{ gap: 8 }}>
           <Text style={styles.sectionTitle}>Transferts à confirmer</Text>
           {transfertsRecus.map((m) => (
+            <MouvementRow key={m.id} m={m} nomDe={nomCaisse} caisses={caisses} onPress={() => confirmValider(m)} />
+          ))}
+        </View>
+      )}
+
+      {isManager && banqueTransfertsEnAttente.length > 0 && (
+        <View style={{ gap: 8 }}>
+          <Text style={styles.sectionTitle}>Transferts banque à valider</Text>
+          {banqueTransfertsEnAttente.map((m) => (
             <MouvementRow key={m.id} m={m} nomDe={nomCaisse} caisses={caisses} onPress={() => confirmValider(m)} />
           ))}
         </View>
@@ -276,6 +366,15 @@ export function CaisseScreen() {
         <View style={{ gap: 8 }}>
           <Text style={styles.sectionTitle}>Historique de ma caisse</Text>
           {historiqueMaCaisse.map((m) => (
+            <MouvementRow key={m.id} m={m} nomDe={nomCaisse} caisses={caisses} />
+          ))}
+        </View>
+      )}
+
+      {isManager && historiqueBanque.length > 0 && (
+        <View style={{ gap: 8 }}>
+          <Text style={styles.sectionTitle}>Historique banque</Text>
+          {historiqueBanque.map((m) => (
             <MouvementRow key={m.id} m={m} nomDe={nomCaisse} caisses={caisses} />
           ))}
         </View>

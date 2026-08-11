@@ -89,7 +89,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
 
 CREATE TABLE IF NOT EXISTS caisses (
   id TEXT PRIMARY KEY NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('principale', 'secondaire')),
+  type TEXT NOT NULL CHECK (type IN ('principale', 'secondaire', 'banque')),
   user_id TEXT,
   owner_identifiant TEXT,
   created_at INTEGER NOT NULL
@@ -120,6 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id);
 export async function migrate(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(SCHEMA_SQL);
   await ensureMouvementsCaisseAllowsApport(db);
+  await ensureCaissesAllowsBanque(db);
   await ensureColumn(db, 'pesees', 'prix_transport_kg', 'REAL NOT NULL DEFAULT 0');
   await ensureColumn(db, 'pesees', 'montant_transport', 'REAL NOT NULL DEFAULT 0');
   await ensureColumn(db, 'ventes', 'prix_transport_kg', 'REAL NOT NULL DEFAULT 0');
@@ -172,6 +173,29 @@ async function ensureMouvementsCaisseAllowsApport(db: SQLiteDatabase): Promise<v
   await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_ts ON mouvements_caisse(ts)');
   await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_from ON mouvements_caisse(caisse_from_id)');
   await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id)');
+}
+
+// Même contrainte SQLite qu'au-dessus, pour le type "banque" ajouté sur la table caisses.
+async function ensureCaissesAllowsBanque(db: SQLiteDatabase): Promise<void> {
+  const row = await db.getFirstAsync<{ sql: string }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'caisses'"
+  );
+  if (!row || row.sql.includes('banque')) return;
+
+  await db.execAsync('DROP INDEX IF EXISTS idx_caisses_user');
+  await db.execAsync('ALTER TABLE caisses RENAME TO caisses_old');
+  await db.execAsync(`
+    CREATE TABLE caisses (
+      id TEXT PRIMARY KEY NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('principale', 'secondaire', 'banque')),
+      user_id TEXT,
+      owner_identifiant TEXT,
+      created_at INTEGER NOT NULL
+    )
+  `);
+  await db.execAsync('INSERT INTO caisses SELECT * FROM caisses_old');
+  await db.execAsync('DROP TABLE caisses_old');
+  await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_caisses_user ON caisses(user_id)');
 }
 
 // Ajoute une colonne manquante sur une base existante (installations déjà en place avant cette version du schéma).
@@ -243,6 +267,17 @@ async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
   if (!caissePrincipaleCount || caissePrincipaleCount.count === 0) {
     await db.runAsync(
       "INSERT INTO caisses (id, type, user_id, created_at) VALUES (?, 'principale', NULL, ?)",
+      uid(),
+      Date.now()
+    );
+  }
+
+  const caisseBanqueCount = await db.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM caisses WHERE type = 'banque'"
+  );
+  if (!caisseBanqueCount || caisseBanqueCount.count === 0) {
+    await db.runAsync(
+      "INSERT INTO caisses (id, type, user_id, created_at) VALUES (?, 'banque', NULL, ?)",
       uid(),
       Date.now()
     );
