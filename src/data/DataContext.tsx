@@ -1,5 +1,6 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { createPlanteur, listPlanteurs, tonnageParPlanteur, type PlanteurTonnage } from '../db/repositories/planteurs';
 import {
@@ -183,8 +184,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // clé étrangère côté Supabase et échoue silencieusement.
       const planteur = planteurs.find((p) => p.id === input.planteurId);
       (async () => {
-        if (planteur) await pushPlanteur(planteur).catch(() => {});
-        await pushPesee(t).catch(() => {});
+        if (planteur) {
+          const rp = await pushPlanteur(planteur).catch((err) => ({ ok: false, error: String(err) }));
+          if (!rp.ok) {
+            Alert.alert('Synchro cloud échouée (planteur)', rp.error ?? 'Erreur inconnue');
+            return;
+          }
+        }
+        const rt = await pushPesee(t).catch((err) => ({ ok: false, error: String(err) }));
+        if (!rt.ok) {
+          Alert.alert('Synchro cloud échouée (pesée)', rt.error ?? 'Erreur inconnue');
+        }
       })();
       return t;
     },
@@ -196,7 +206,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!currentUser) throw new Error('Utilisateur non connecté');
       const t = await createVente(db, { ...input, userId: currentUser.id, userNom: currentUser.nom });
       await refresh();
-      pushVente(t).catch(() => {});
+      pushVente(t)
+        .then((r) => {
+          if (!r.ok) Alert.alert('Synchro cloud échouée (vente)', r.error ?? 'Erreur inconnue');
+        })
+        .catch(() => {});
       return t;
     },
     [db, refresh, currentUser]
