@@ -12,6 +12,7 @@ delete from public.ventes;
 delete from public.caisses;
 delete from public.planteurs;
 delete from public.audit_log;
+delete from public.local_accounts;
 delete from public.profiles;
 delete from auth.users;
 
