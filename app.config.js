@@ -33,5 +33,10 @@ module.exports = {
       favicon: './assets/images/logo-akajo.png',
       bundler: 'metro',
     },
+    extra: {
+      eas: {
+        projectId: 'dd9b8e4e-c78a-4ac9-a867-da41bb548698',
+      },
+    },
   },
 };
