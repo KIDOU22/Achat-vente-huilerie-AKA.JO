@@ -19,6 +19,7 @@ import {
   enregistrerDepensePesee,
   annulerDepensePesee,
   ensureCaisseForUser,
+  ensureSingletonCaisses,
   initierRetour as initierRetourRepo,
   initierTransfert as initierTransfertRepo,
   validerMouvement as validerMouvementRepo,
@@ -203,16 +204,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async function fullSync() {
       await pushPending().catch(() => {});
       await pullAndRefresh();
-      // Uniquement APRÈS le pull : une caisse existant déjà côté cloud vient d'être
-      // rapatriée localement à l'instant si besoin — ensureCaisseForUser ne doit
-      // conclure à une caisse manquante qu'une fois cette chance donnée, sinon un
-      // appareil qui vient de se connecter en recréerait un doublon à chaque fois.
+      // Uniquement APRÈS le pull : une caisse (la mienne, ou la principale/banque)
+      // existant déjà côté cloud vient d'être rapatriée localement à l'instant si
+      // besoin — conclure à une caisse manquante avant d'avoir laissé cette chance au
+      // pull créerait un doublon à chaque appareil vidé/réinstallé.
+      await ensureSingletonCaisses(db);
       const user = currentUserRef.current;
       if (user) {
-        const caisse = await ensureCaisseForUser(db, user.id, user.identifiant);
-        pushCaisse(caisse).catch(() => {});
-        if (!cancelled) await refreshRef.current();
+        await ensureCaisseForUser(db, user.id, user.identifiant);
       }
+      const localCaissesAfter = await listCaisses(db);
+      for (const c of localCaissesAfter) {
+        pushCaisse(c).catch(() => {});
+      }
+      if (!cancelled) await refreshRef.current();
     }
 
     fullSync();

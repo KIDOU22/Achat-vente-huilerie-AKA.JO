@@ -164,6 +164,28 @@ export async function ensureCaisseForUser(db: SQLiteDatabase, userId: string, id
   return { id, type: 'secondaire', userId, ownerIdentifiant, createdAt };
 }
 
+// Filet de sécurité pour les caisses "singleton" (principale, banque), à appeler
+// UNIQUEMENT après un tirage (pull) réussi — jamais avant, sinon un appareil qui
+// vient d'être vidé croirait à tort qu'elles n'existent pas encore et en créerait de
+// nouvelles en double à chaque réinstallation, au lieu de retrouver celles déjà sur
+// Supabase. Sans effet si elles existent déjà.
+export async function ensureSingletonCaisses(db: SQLiteDatabase): Promise<void> {
+  for (const type of ['principale', 'banque'] as const) {
+    const existing = await db.getFirstAsync<{ count: number }>(
+      'SELECT COUNT(*) as count FROM caisses WHERE type = ?',
+      type
+    );
+    if (!existing || existing.count === 0) {
+      await db.runAsync(
+        'INSERT INTO caisses (id, type, user_id, created_at) VALUES (?, ?, NULL, ?)',
+        uid(),
+        type,
+        Date.now()
+      );
+    }
+  }
+}
+
 export async function listMouvements(db: SQLiteDatabase): Promise<MouvementCaisse[]> {
   const rows = await db.getAllAsync<MouvementRow>('SELECT * FROM mouvements_caisse ORDER BY ts DESC');
   return rows.map(toMouvement);

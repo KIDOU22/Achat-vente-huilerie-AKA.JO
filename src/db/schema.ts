@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { hashCode } from '../auth/crypto';
 import { uid } from '../domain/format';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { fusionnerCaissesUniquesEnDouble } from './repositories/caisses';
 import { fusionnerPlanteursEnDouble } from './repositories/planteurs';
 
@@ -137,7 +138,6 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'caisses', 'owner_identifiant', 'TEXT');
   await ensureUsersAllowsDirigeant(db);
   await seedIfEmpty(db);
-  await ensureCaissesForExistingUsers(db);
   await fusionnerCaissesUniquesEnDouble(db);
   await fusionnerPlanteursEnDouble(db);
 }
@@ -290,41 +290,34 @@ async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
   await seedSettingIfMissing(db, 'prixLitre', '950');
   await seedSettingIfMissing(db, 'prixTransportRegime', '10');
 
-  const caissePrincipaleCount = await db.getFirstAsync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM caisses WHERE type = 'principale'"
-  );
-  if (!caissePrincipaleCount || caissePrincipaleCount.count === 0) {
-    await db.runAsync(
-      "INSERT INTO caisses (id, type, user_id, created_at) VALUES (?, 'principale', NULL, ?)",
-      uid(),
-      Date.now()
+  // Important : sur une installation neuve avec la synchro cloud active, ne JAMAIS
+  // créer ces caisses "singleton" ici — une caisse principale/banque doit exister en
+  // un seul exemplaire pour tout le monde. Les créer localement avant même d'avoir pu
+  // vérifier si elles existent déjà sur Supabase garantit un doublon à chaque
+  // réinstallation/vidage de l'app (repoussé au prochain cycle de synchro). Sans
+  // Supabase configuré, l'app doit rester utilisable hors-ligne : on les crée alors
+  // directement, il n'y a personne d'autre avec qui elles pourraient entrer en
+  // conflit. Avec Supabase, ensureSingletonCaisses (appelé après le premier tirage,
+  // voir DataContext) prend le relais.
+  if (!isSupabaseConfigured) {
+    const caissePrincipaleCount = await db.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) as count FROM caisses WHERE type = 'principale'"
     );
-  }
-
-  const caisseBanqueCount = await db.getFirstAsync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM caisses WHERE type = 'banque'"
-  );
-  if (!caisseBanqueCount || caisseBanqueCount.count === 0) {
-    await db.runAsync(
-      "INSERT INTO caisses (id, type, user_id, created_at) VALUES (?, 'banque', NULL, ?)",
-      uid(),
-      Date.now()
-    );
-  }
-}
-
-// Crée la caisse secondaire manquante pour tout utilisateur qui n'en a pas encore
-// (installations mises à jour depuis une version antérieure à cette fonctionnalité).
-async function ensureCaissesForExistingUsers(db: SQLiteDatabase): Promise<void> {
-  const users = await db.getAllAsync<{ id: string; identifiant: string }>('SELECT id, identifiant FROM users');
-  for (const u of users) {
-    const existing = await db.getFirstAsync<{ id: string }>('SELECT id FROM caisses WHERE user_id = ?', u.id);
-    if (!existing) {
+    if (!caissePrincipaleCount || caissePrincipaleCount.count === 0) {
       await db.runAsync(
-        "INSERT INTO caisses (id, type, user_id, owner_identifiant, created_at) VALUES (?, 'secondaire', ?, ?, ?)",
+        "INSERT INTO caisses (id, type, user_id, created_at) VALUES (?, 'principale', NULL, ?)",
         uid(),
-        u.id,
-        u.identifiant.trim().toLowerCase(),
+        Date.now()
+      );
+    }
+
+    const caisseBanqueCount = await db.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) as count FROM caisses WHERE type = 'banque'"
+    );
+    if (!caisseBanqueCount || caisseBanqueCount.count === 0) {
+      await db.runAsync(
+        "INSERT INTO caisses (id, type, user_id, created_at) VALUES (?, 'banque', NULL, ?)",
+        uid(),
         Date.now()
       );
     }
