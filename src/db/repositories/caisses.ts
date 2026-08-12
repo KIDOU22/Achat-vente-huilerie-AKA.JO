@@ -129,6 +129,38 @@ export async function getCaisseForUser(db: SQLiteDatabase, userId: string): Prom
   return row ? toCaisse(row) : null;
 }
 
+// Filet de sécurité appelé à chaque connexion : un utilisateur peut se retrouver sans
+// caisse locale pour des raisons historiques (compte recréé pendant les tests, trou
+// de synchro passé...) — la carte "Ma caisse" reste alors invisible et ses paiements
+// de pesée ne débitent nulle part, sans aucune erreur visible. Crée la caisse
+// manquante si besoin (cherche d'abord par identifiant, au cas où elle existerait
+// déjà localement sans lien user_id à jour) ; sans effet si elle existe déjà.
+export async function ensureCaisseForUser(db: SQLiteDatabase, userId: string, identifiant: string): Promise<Caisse> {
+  const parUserId = await getCaisseForUser(db, userId);
+  if (parUserId) return parUserId;
+
+  const ownerIdentifiant = identifiant.trim().toLowerCase();
+  const parIdentifiant = await db.getFirstAsync<CaisseRow>(
+    "SELECT * FROM caisses WHERE type = 'secondaire' AND lower(owner_identifiant) = ?",
+    ownerIdentifiant
+  );
+  if (parIdentifiant) {
+    await db.runAsync('UPDATE caisses SET user_id = ? WHERE id = ?', userId, parIdentifiant.id);
+    return toCaisse({ ...parIdentifiant, user_id: userId });
+  }
+
+  const id = uid();
+  const createdAt = Date.now();
+  await db.runAsync(
+    "INSERT INTO caisses (id, type, user_id, owner_identifiant, created_at) VALUES (?, 'secondaire', ?, ?, ?)",
+    id,
+    userId,
+    ownerIdentifiant,
+    createdAt
+  );
+  return { id, type: 'secondaire', userId, ownerIdentifiant, createdAt };
+}
+
 export async function listMouvements(db: SQLiteDatabase): Promise<MouvementCaisse[]> {
   const rows = await db.getAllAsync<MouvementRow>('SELECT * FROM mouvements_caisse ORDER BY ts DESC');
   return rows.map(toMouvement);

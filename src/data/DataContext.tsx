@@ -18,6 +18,7 @@ import {
   enregistrerDepense as enregistrerDepenseRepo,
   enregistrerDepensePesee,
   annulerDepensePesee,
+  ensureCaisseForUser,
   initierRetour as initierRetourRepo,
   initierTransfert as initierTransfertRepo,
   validerMouvement as validerMouvementRepo,
@@ -123,6 +124,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     })();
   }, [refresh]);
+
+  // Filet de sécurité : garantit qu'un utilisateur connecté a toujours une caisse
+  // locale, quelle qu'en soit la raison historique d'une absence (compte recréé
+  // pendant des tests, trou de synchro passé...). Sans ça, la carte "Ma caisse" reste
+  // invisible et ses paiements de pesée ne débitent nulle part, sans erreur visible.
+  useEffect(() => {
+    if (!currentUser) return;
+    (async () => {
+      const caisse = await ensureCaisseForUser(db, currentUser.id, currentUser.identifiant);
+      pushCaisse(caisse).catch(() => {});
+      await refresh();
+    })();
+  }, [db, currentUser, refresh]);
 
   // Synchronisation cloud : tire les données distantes au démarrage et à chaque
   // connexion, puis reste à l'écoute des changements en temps réel (Realtime) pour
