@@ -16,9 +16,9 @@ delete from public.local_accounts;
 delete from public.profiles;
 delete from auth.users;
 
--- Remet les prix par défaut (ajustez les valeurs si besoin avant de lancer).
+-- Remet les prix de départ pour le test réel (ajustez les valeurs si besoin avant de lancer).
 insert into public.settings (key, value) values
-  ('prixKg', '115'),
-  ('prixLitre', '950'),
-  ('prixTransportRegime', '10')
+  ('prixKg', '80'),
+  ('prixLitre', '600'),
+  ('prixTransportRegime', '11')
 on conflict (key) do update set value = excluded.value;

@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  netLabel: { fontFamily: fonts.body, fontSize: 14, color: colors.textMuted },
+  netLabel: { fontFamily: fonts.body, fontSize: 14, color: colors.textMuted, flexShrink: 1, marginRight: 10 },
   netValue: { fontFamily: fonts.mono, fontSize: 20, fontWeight: '700', color: colors.text },
   priceBox: {
     flexDirection: 'row',
@@ -218,13 +218,15 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     minWidth: 80,
     paddingVertical: 0,
+    flexShrink: 0,
   },
   priceReadOnly: {
     fontFamily: fonts.monoSemiBold,
     fontSize: 16,
     color: colors.oil,
+    flexShrink: 0,
   },
-  lockedRow: { flexDirection: 'row', alignItems: 'center' },
+  lockedRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
   montantRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
