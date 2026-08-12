@@ -13,6 +13,20 @@
         "simulator": false
       }
     },
+    "demo": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "APP_VARIANT": "demo",
+        "EXPO_PUBLIC_SUPABASE_URL": "REMPLACER_PAR_URL_PROJET_DEMO",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "REMPLACER_PAR_CLE_ANON_PROJET_DEMO"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "android": {

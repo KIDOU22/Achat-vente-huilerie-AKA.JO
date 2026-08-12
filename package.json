@@ -43,6 +43,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "build:android": "eas build --platform android --profile preview",
+    "build:android:demo": "eas build --platform android --profile demo",
     "build:ios": "eas build --platform ios --profile preview"
   },
   "private": true
