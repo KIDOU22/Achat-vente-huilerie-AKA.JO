@@ -125,24 +125,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [refresh]);
 
-  // Filet de sécurité : garantit qu'un utilisateur connecté a toujours une caisse
-  // locale, quelle qu'en soit la raison historique d'une absence (compte recréé
-  // pendant des tests, trou de synchro passé...). Sans ça, la carte "Ma caisse" reste
-  // invisible et ses paiements de pesée ne débitent nulle part, sans erreur visible.
-  useEffect(() => {
-    if (!currentUser) return;
-    (async () => {
-      const caisse = await ensureCaisseForUser(db, currentUser.id, currentUser.identifiant);
-      pushCaisse(caisse).catch(() => {});
-      await refresh();
-    })();
-  }, [db, currentUser, refresh]);
-
   // Synchronisation cloud : tire les données distantes au démarrage et à chaque
   // connexion, puis reste à l'écoute des changements en temps réel (Realtime) pour
   // que le téléphone du Gérant reflète automatiquement les saisies des agents.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+
+  // Filet de sécurité hors-ligne uniquement : sans Supabase configuré, l'effet de
+  // synchro ci-dessous ne s'exécute jamais (voir son premier `if (!supabase) return`)
+  // — c'est donc ici qu'on garantit qu'un utilisateur connecté a toujours une caisse
+  // locale. Avec Supabase, cette même garantie est assurée dans fullSync() ci-dessous,
+  // et UNIQUEMENT là : la lancer aussi ici créerait une course avec le premier tirage
+  // (pullCaisses) — sur un appareil qui vient de se connecter, sa caisse existe peut-
+  // être déjà côté cloud mais n'a pas encore eu le temps d'être rapatriée localement ;
+  // conclure trop tôt qu'elle "n'existe pas" en créerait un doublon.
+  useEffect(() => {
+    if (supabase) return;
+    if (!currentUser) return;
+    (async () => {
+      await ensureCaisseForUser(db, currentUser.id, currentUser.identifiant);
+      await refresh();
+    })();
+  }, [db, currentUser, refresh]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -197,6 +203,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async function fullSync() {
       await pushPending().catch(() => {});
       await pullAndRefresh();
+      // Uniquement APRÈS le pull : une caisse existant déjà côté cloud vient d'être
+      // rapatriée localement à l'instant si besoin — ensureCaisseForUser ne doit
+      // conclure à une caisse manquante qu'une fois cette chance donnée, sinon un
+      // appareil qui vient de se connecter en recréerait un doublon à chaque fois.
+      const user = currentUserRef.current;
+      if (user) {
+        const caisse = await ensureCaisseForUser(db, user.id, user.identifiant);
+        pushCaisse(caisse).catch(() => {});
+        if (!cancelled) await refreshRef.current();
+      }
     }
 
     fullSync();
