@@ -62,6 +62,7 @@
   .stat-value.amber { color: var(--amber); }
   .section-title { color: var(--accent); font-size: 15px; font-weight: 700; margin: 28px 0 10px; text-transform: uppercase; letter-spacing: .5px; }
   .section-title.oil { color: var(--oil); }
+  .section-title.frond { color: var(--frond); }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); color: var(--text); }
   th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
@@ -70,6 +71,7 @@
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
   .pill.paye { background: rgba(90,115,80,0.15); color: var(--frond); }
   .pill.impaye { background: rgba(140,46,16,0.12); color: var(--accent); }
+  .pill.attente { background: rgba(201,122,30,0.15); color: var(--amber); }
   #dash-screen { display: none; }
   .hidden { display: none !important; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--frond); display: inline-block; margin-right: 6px; }
@@ -120,6 +122,12 @@
 
     <div class="section-title">Planteurs</div>
     <div class="card"><table id="table-planteurs"><thead><tr><th>Nom</th><th>Village</th><th>Tonnage cumulé</th></tr></thead><tbody></tbody></table></div>
+
+    <div id="caisses-section">
+      <div class="section-title frond">Caisses</div>
+      <div class="grid cols-4" id="caisses-solde-grid" style="margin-bottom:16px;"></div>
+      <div class="card"><table id="table-mouvements"><thead></thead><tbody></tbody></table></div>
+    </div>
 
     <div class="section-title">Export des données</div>
     <div class="card" id="export-card">
@@ -229,12 +237,20 @@ async function enterDashboard() {
 }
 
 async function loadAll() {
-  const [{ data: pesees }, ventesResult, { data: planteurs }] = await Promise.all([
+  // Les caisses/mouvements ne concernent que le gérant et le dirigeant — un agent ne
+  // voit (comme dans l'app mobile) que sa propre caisse, pas celle des autres : la
+  // section entière reste masquée pour lui sur le tableau de bord.
+  const wantsCaisses = currentRole !== 'agent';
+  const [{ data: pesees }, ventesResult, { data: planteurs }, caissesResult, mouvementsResult] = await Promise.all([
     sb.from('pesees').select('*').order('ts', { ascending: false }).limit(50),
     currentRole !== 'agent'
       ? sb.from('ventes').select('*').order('ts', { ascending: false }).limit(50)
       : sb.from('ventes_agent_view').select('*').order('ts', { ascending: false }).limit(50),
     sb.from('planteurs').select('*'),
+    wantsCaisses ? sb.from('caisses').select('*') : Promise.resolve({ data: [] }),
+    wantsCaisses
+      ? sb.from('mouvements_caisse').select('*').order('ts', { ascending: false }).limit(200)
+      : Promise.resolve({ data: [] }),
   ]);
   const ventes = ventesResult.data || [];
   allPesees = pesees || [];
@@ -244,6 +260,8 @@ async function loadAll() {
   renderAchats(allPesees, allPlanteurs);
   renderVentes(ventes);
   renderPlanteurs(allPlanteurs, allPesees);
+  document.getElementById('caisses-section').style.display = wantsCaisses ? '' : 'none';
+  if (wantsCaisses) renderCaisses(caissesResult.data || [], mouvementsResult.data || []);
 }
 
 function todayKey() {
@@ -479,6 +497,63 @@ async function exportVentes() {
   }
 }
 
+const MOUVEMENT_TYPE_LABELS = {
+  allocation: 'Allocation',
+  depense: 'Dépense',
+  retour: 'Retour caisse principale',
+  transfert: 'Transfert',
+  apport: 'Apport (dépôt)',
+};
+const MOUVEMENT_STATUT_LABELS = { en_attente: 'En attente', validee: 'Validé', rejetee: 'Rejeté' };
+const MOUVEMENT_STATUT_PILL = { en_attente: 'attente', validee: 'paye', rejetee: 'impaye' };
+
+function caisseLabel(c) {
+  if (c.type === 'principale') return 'Caisse principale';
+  if (c.type === 'banque') return 'Banque';
+  return c.owner_identifiant || 'Caisse';
+}
+
+// Même règle que côté app mobile (src/db/repositories/caisses.ts) : solde = somme
+// des mouvements VALIDÉS reçus moins ceux envoyés (un mouvement en attente ou rejeté
+// ne compte pas encore/plus dans le solde).
+function soldeCaisse(caisseId, mouvements) {
+  let solde = 0;
+  for (const m of mouvements) {
+    if (m.statut !== 'validee') continue;
+    if (m.caisse_to_id === caisseId) solde += m.montant;
+    if (m.caisse_from_id === caisseId) solde -= m.montant;
+  }
+  return solde;
+}
+
+function renderCaisses(caisses, mouvements) {
+  const grid = document.getElementById('caisses-solde-grid');
+  grid.innerHTML = caisses.map((c) => `
+    <div class="card">
+      <p class="stat-label">${caisseLabel(c)}</p>
+      <p class="stat-value frond">${fmtF(soldeCaisse(c.id, mouvements))}</p>
+    </div>
+  `).join('') || `<p class="muted">Aucune caisse</p>`;
+
+  const labelById = {};
+  for (const c of caisses) labelById[c.id] = caisseLabel(c);
+
+  const table = document.getElementById('table-mouvements');
+  table.querySelector('thead').innerHTML = `<tr><th>Date</th><th>Type</th><th>De</th><th>Vers</th><th>Montant</th><th>Motif</th><th>Statut</th><th>Par</th></tr>`;
+  table.querySelector('tbody').innerHTML = mouvements.map((m) => `
+    <tr>
+      <td>${new Date(m.ts).toLocaleString('fr-FR')}</td>
+      <td>${MOUVEMENT_TYPE_LABELS[m.type] || m.type}</td>
+      <td>${m.caisse_from_id ? (labelById[m.caisse_from_id] || '—') : '—'}</td>
+      <td>${m.caisse_to_id ? (labelById[m.caisse_to_id] || '—') : '—'}</td>
+      <td>${fmtF(m.montant)}</td>
+      <td>${m.motif || '—'}</td>
+      <td><span class="pill ${MOUVEMENT_STATUT_PILL[m.statut] || ''}">${MOUVEMENT_STATUT_LABELS[m.statut] || m.statut}</span></td>
+      <td>${m.created_by_nom}</td>
+    </tr>
+  `).join('') || `<tr><td class="muted" colspan="8">Aucun mouvement</td></tr>`;
+}
+
 function subscribeRealtime() {
   // Regroupe les rafales d'événements rapprochés (plusieurs pesées créées coup sur
   // coup, ou un appareil qui repousse ses données en attente) en un seul rechargement
@@ -494,6 +569,8 @@ function subscribeRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pesees' }, scheduleReload)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ventes' }, scheduleReload)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'planteurs' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'caisses' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvements_caisse' }, scheduleReload)
     .subscribe();
 }
 
