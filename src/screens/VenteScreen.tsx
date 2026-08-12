@@ -111,8 +111,10 @@ export function VenteScreen() {
 
       <View style={styles.priceBox}>
         <Text style={styles.netLabel}>Prix du litre (F)</Text>
-        {isElevated ? (
+        {isManager ? (
           <TextInput value={prixLitre} onChangeText={setPrixLitre} keyboardType="numeric" style={styles.priceInput} />
+        ) : isElevated ? (
+          <Text style={styles.priceReadOnly}>{formatFCFA(prixNum)}</Text>
         ) : (
           <View style={styles.lockedRow}>
             <Lock size={14} color={colors.textFaint} />
@@ -141,6 +143,8 @@ export function VenteScreen() {
             placeholder="0"
             style={styles.priceInput}
           />
+        ) : isElevated ? (
+          <Text style={styles.priceReadOnly}>{formatFCFA(montantTransport)}</Text>
         ) : (
           <View style={styles.lockedRow}>
             <Lock size={14} color={colors.textFaint} />

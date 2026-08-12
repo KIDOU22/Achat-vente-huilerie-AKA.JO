@@ -1,7 +1,7 @@
 -- Huilerie Aka.Jo — création complète du schéma sur un PROJET SUPABASE NEUF
 -- (utile pour un environnement de démo/test, séparé de la production).
 -- Regroupe en un seul script l'état final de toutes les migrations
--- 0001 à 0014 (supabase/migrations/) — inutile de les rejouer une par une sur un
+-- 0001 à 0015 (supabase/migrations/) — inutile de les rejouer une par une sur un
 -- projet neuf. Sans effet destructeur si rejoué : repart d'une base propre si les
 -- tables existent déjà (comme 0001_init.sql).
 -- À exécuter UNE SEULE FOIS, juste après avoir créé le projet Supabase :
@@ -98,11 +98,13 @@ alter table public.settings enable row level security;
 create policy "settings_select" on public.settings
   for select using (key in ('prixKg', 'prixTransportRegime') or public.is_elevated());
 
+-- Seul le gérant modifie les prix ; le dirigeant les voit (settings_select
+-- ci-dessus, ouvert via is_elevated()) mais ne peut pas les écrire.
 create policy "settings_insert" on public.settings
-  for insert with check (public.is_elevated());
+  for insert with check (public.is_gerant());
 
 create policy "settings_update" on public.settings
-  for update using (public.is_elevated());
+  for update using (public.is_gerant());
 
 insert into public.settings (key, value) values
   ('prixKg', '115'),
