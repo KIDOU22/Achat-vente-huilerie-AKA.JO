@@ -103,12 +103,15 @@ export async function fusionnerCaissesUniquesEnDouble(db: SQLiteDatabase): Promi
     }
   }
 
+  // Comparaison insensible à la casse/espaces : le même identifiant a pu être
+  // enregistré différemment selon l'appareil (ex: "Borgia" vs "borgia"), ce qui
+  // empêcherait sinon de reconnaître ces caisses comme des doublons du même compte.
   const owners = await db.getAllAsync<{ owner_identifiant: string }>(
-    "SELECT DISTINCT owner_identifiant FROM caisses WHERE type = 'secondaire' AND owner_identifiant IS NOT NULL"
+    "SELECT DISTINCT lower(trim(owner_identifiant)) as owner_identifiant FROM caisses WHERE type = 'secondaire' AND owner_identifiant IS NOT NULL"
   );
   for (const { owner_identifiant } of owners) {
     const rows = await db.getAllAsync<{ id: string }>(
-      "SELECT id FROM caisses WHERE type = 'secondaire' AND owner_identifiant = ? ORDER BY created_at ASC, id ASC",
+      "SELECT id FROM caisses WHERE type = 'secondaire' AND lower(trim(owner_identifiant)) = ? ORDER BY created_at ASC, id ASC",
       owner_identifiant
     );
     if (rows.length <= 1) continue;

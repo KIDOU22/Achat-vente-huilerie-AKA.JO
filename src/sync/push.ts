@@ -205,7 +205,7 @@ export async function pushCaisse(c: Caisse): Promise<PushResult> {
     const { error } = await supabase.from('caisses').upsert({
       id: c.id,
       type: c.type,
-      owner_identifiant: c.ownerIdentifiant,
+      owner_identifiant: c.ownerIdentifiant ? c.ownerIdentifiant.trim().toLowerCase() : c.ownerIdentifiant,
       created_at: new Date(c.createdAt).toISOString(),
     });
     if (error) {
