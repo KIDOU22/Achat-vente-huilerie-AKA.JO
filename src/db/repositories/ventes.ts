@@ -18,6 +18,7 @@ interface VenteRow {
   montant: number;
   prix_transport_kg: number;
   montant_transport: number;
+  paye: number;
   ts: number;
   created_by: string;
   annulee: number;
@@ -41,6 +42,7 @@ function toVente(row: VenteRow): Vente {
     montant: row.montant,
     prixTransportKg: row.prix_transport_kg,
     montantTransport: row.montant_transport,
+    paye: row.paye === 1,
     ts: row.ts,
     createdBy: row.created_by,
     annulee: row.annulee === 1,
@@ -78,8 +80,8 @@ export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): 
   const num = (countRow?.count ?? 0) + 1;
 
   await db.runAsync(
-    `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation, poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, ts, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation, poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, paye, ts, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     id,
     num,
     input.numTicketPesee.trim(),
@@ -122,12 +124,30 @@ export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): 
     montant,
     prixTransportKg: input.prixTransportKg,
     montantTransport,
+    paye: false,
     ts,
     createdBy: input.userId,
     annulee: false,
     annuleePar: null,
     motifAnnulation: null,
   };
+}
+
+export async function togglePayeVente(
+  db: SQLiteDatabase,
+  id: string,
+  paye: boolean,
+  actor: { userId: string; userNom: string }
+): Promise<void> {
+  await db.runAsync('UPDATE ventes SET paye = ? WHERE id = ?', paye ? 1 : 0, id);
+  await logAudit(db, {
+    userId: actor.userId,
+    userNom: actor.userNom,
+    action: paye ? 'marquer_paye' : 'marquer_impaye',
+    entity: 'vente',
+    entityId: id,
+    details: '',
+  });
 }
 
 // Annulation réservée au Gérant : conserve la vente (traçabilité) mais l'exclut des

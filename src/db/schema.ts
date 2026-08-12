@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS ventes (
   montant REAL NOT NULL,
   prix_transport_kg REAL NOT NULL DEFAULT 0,
   montant_transport REAL NOT NULL DEFAULT 0,
+  paye INTEGER NOT NULL DEFAULT 0,
   ts INTEGER NOT NULL,
   created_by TEXT NOT NULL
 );
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS mouvements_caisse (
   motif TEXT NOT NULL DEFAULT '',
   statut TEXT NOT NULL CHECK (statut IN ('en_attente', 'validee', 'rejetee')),
   pesee_id TEXT,
+  vente_id TEXT,
   created_by TEXT NOT NULL,
   created_by_nom TEXT NOT NULL,
   validated_by TEXT,
@@ -136,6 +138,8 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'ventes', 'motif_annulation', 'TEXT');
   await ensureColumn(db, 'users', 'doit_changer_code', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(db, 'caisses', 'owner_identifiant', 'TEXT');
+  await ensureColumn(db, 'ventes', 'paye', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'mouvements_caisse', 'vente_id', 'TEXT');
   await ensureUsersAllowsDirigeant(db);
   await seedIfEmpty(db);
   await fusionnerCaissesUniquesEnDouble(db);

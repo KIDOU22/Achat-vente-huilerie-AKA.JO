@@ -10,13 +10,21 @@ import {
   togglePaye as togglePayeRepo,
   type CreatePeseeInput,
 } from '../db/repositories/pesees';
-import { annulerVente as annulerVenteRepo, createVente, listVentes, type CreateVenteInput } from '../db/repositories/ventes';
+import {
+  annulerVente as annulerVenteRepo,
+  createVente,
+  listVentes,
+  togglePayeVente as togglePayeVenteRepo,
+  type CreateVenteInput,
+} from '../db/repositories/ventes';
 import { getSetting, setSetting } from '../db/repositories/settings';
 import {
   allouer as allouerRepo,
   enregistrerApport as enregistrerApportRepo,
+  enregistrerCreditVente,
   enregistrerDepense as enregistrerDepenseRepo,
   enregistrerDepensePesee,
+  annulerCreditVente,
   annulerDepensePesee,
   ensureCaisseForUser,
   ensureSingletonCaisses,
@@ -35,10 +43,12 @@ import { pullAll } from '../sync/pull';
 import {
   pushCaisse,
   pushDeleteMouvementForPesee,
+  pushDeleteMouvementForVente,
   pushDeletePlanteur,
   pushMouvement,
   pushMouvementStatus,
   pushPayeStatus,
+  pushPayeStatusVente,
   pushPesee,
   pushPlanteur,
   pushSetting,
@@ -64,6 +74,7 @@ interface DataContextValue {
   enregistrerPesee: (input: Omit<CreatePeseeInput, 'userId' | 'userNom'>) => Promise<Pesee>;
   enregistrerVente: (input: Omit<CreateVenteInput, 'userId' | 'userNom'>) => Promise<Vente>;
   togglePaye: (id: string, paye: boolean) => Promise<void>;
+  togglePayeVente: (id: string, paye: boolean, caisseId?: string) => Promise<void>;
   annulerPesee: (id: string, motif: string) => Promise<void>;
   annulerVente: (id: string, motif: string) => Promise<void>;
   setPrixKg: (value: string) => Promise<void>;
@@ -341,6 +352,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [db, refresh, currentUser, pesees, caisses]
   );
 
+  const togglePayeVente = useCallback(
+    async (id: string, paye: boolean, caisseId?: string) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      await togglePayeVenteRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
+      // Une vente payée crédite la caisse choisie par le vendeur (principale ou
+      // banque) ; repasser à "impayée" annule ce crédit automatique.
+      const vente = ventes.find((v) => v.id === id);
+      if (paye) {
+        if (!caisseId) throw new Error('Caisse destinataire requise');
+        if (vente) {
+          const mouvement = await enregistrerCreditVente(db, {
+            caisseId,
+            venteId: id,
+            montant: vente.montant,
+            actor: { userId: currentUser.id, userNom: currentUser.nom },
+          });
+          if (mouvement) pushMouvement(mouvement).catch(() => {});
+        }
+      } else {
+        await annulerCreditVente(db, id);
+        pushDeleteMouvementForVente(id).catch(() => {});
+      }
+      await refresh();
+      const r = await pushPayeStatusVente(id, paye).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (statut paiement vente)', r.error ?? 'Erreur inconnue');
+      }
+    },
+    [db, refresh, currentUser, ventes]
+  );
+
   const annulerPesee = useCallback(
     async (id: string, motif: string) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
@@ -360,8 +402,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async (id: string, motif: string) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
       await annulerVenteRepo(db, id, motif, { userId: currentUser.id, userNom: currentUser.nom });
+      await annulerCreditVente(db, id);
       const vente = ventes.find((v) => v.id === id);
       await refresh();
+      pushDeleteMouvementForVente(id).catch(() => {});
       if (vente) {
         pushVente({ ...vente, annulee: true, annuleePar: currentUser.id, motifAnnulation: motif.trim() }).catch(() => {});
       }
@@ -494,6 +538,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       enregistrerPesee,
       enregistrerVente,
       togglePaye,
+      togglePayeVente,
       annulerPesee,
       annulerVente,
       setPrixKg,
@@ -525,6 +570,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       enregistrerPesee,
       enregistrerVente,
       togglePaye,
+      togglePayeVente,
       annulerPesee,
       annulerVente,
       setPrixKg,

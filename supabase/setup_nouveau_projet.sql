@@ -1,7 +1,7 @@
 -- Huilerie Aka.Jo — création complète du schéma sur un PROJET SUPABASE NEUF
 -- (utile pour un environnement de démo/test, séparé de la production).
 -- Regroupe en un seul script l'état final de toutes les migrations
--- 0001 à 0013 (supabase/migrations/) — inutile de les rejouer une par une sur un
+-- 0001 à 0014 (supabase/migrations/) — inutile de les rejouer une par une sur un
 -- projet neuf. Sans effet destructeur si rejoué : repart d'une base propre si les
 -- tables existent déjà (comme 0001_init.sql).
 -- À exécuter UNE SEULE FOIS, juste après avoir créé le projet Supabase :
@@ -178,6 +178,7 @@ create table public.ventes (
   montant numeric not null,
   prix_transport_kg numeric not null default 0,
   montant_transport numeric not null default 0,
+  paye boolean not null default false,
   ts timestamptz not null default now(),
   created_by text not null,
   annulee boolean not null default false,
@@ -203,7 +204,7 @@ create policy "ventes_update" on public.ventes
 -- prix/montant/transport.
 create or replace view public.ventes_agent_view as
 select id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation,
-       poids_charge, poids_vide, net, ts, created_by, annulee, annulee_par, motif_annulation
+       poids_charge, poids_vide, net, ts, created_by, paye, annulee, annulee_par, motif_annulation
 from public.ventes;
 
 grant select on public.ventes_agent_view to authenticated;
@@ -270,6 +271,7 @@ create table public.mouvements_caisse (
   motif text not null default '',
   statut text not null check (statut in ('en_attente', 'validee', 'rejetee')),
   pesee_id uuid,
+  vente_id uuid,
   created_by text not null,
   created_by_nom text not null,
   validated_by text,

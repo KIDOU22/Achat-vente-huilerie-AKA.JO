@@ -30,6 +30,7 @@ interface MouvementRow {
   motif: string;
   statut: MouvementStatut;
   pesee_id: string | null;
+  vente_id: string | null;
   created_by: string;
   created_by_nom: string;
   validated_by: string | null;
@@ -48,6 +49,7 @@ function toMouvement(row: MouvementRow): MouvementCaisse {
     motif: row.motif,
     statut: row.statut,
     peseeId: row.pesee_id,
+    venteId: row.vente_id,
     createdBy: row.created_by,
     createdByNom: row.created_by_nom,
     validatedBy: row.validated_by,
@@ -212,6 +214,7 @@ async function insertMouvement(
     motif: string;
     statut: MouvementStatut;
     peseeId?: string | null;
+    venteId?: string | null;
     createdBy: string;
     createdByNom: string;
   }
@@ -220,8 +223,8 @@ async function insertMouvement(
   const ts = Date.now();
   await db.runAsync(
     `INSERT INTO mouvements_caisse
-       (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+       (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
     id,
     input.type,
     input.caisseFromId,
@@ -230,6 +233,7 @@ async function insertMouvement(
     input.motif.trim(),
     input.statut,
     input.peseeId ?? null,
+    input.venteId ?? null,
     input.createdBy,
     input.createdByNom,
     ts,
@@ -244,6 +248,7 @@ async function insertMouvement(
     motif: input.motif.trim(),
     statut: input.statut,
     peseeId: input.peseeId ?? null,
+    venteId: input.venteId ?? null,
     createdBy: input.createdBy,
     createdByNom: input.createdByNom,
     validatedBy: null,
@@ -363,6 +368,35 @@ export async function enregistrerDepensePesee(
 
 export async function annulerDepensePesee(db: SQLiteDatabase, peseeId: string): Promise<void> {
   await db.runAsync("DELETE FROM mouvements_caisse WHERE pesee_id = ? AND type = 'depense'", peseeId);
+}
+
+// Crédit automatique : une vente marquée "payée" crédite la caisse choisie par le
+// vendeur (caisse principale ou banque). Idempotent — un seul mouvement par vente,
+// supprimé si la vente repasse à "impayée".
+export async function enregistrerCreditVente(
+  db: SQLiteDatabase,
+  input: { caisseId: string; venteId: string; montant: number; actor: { userId: string; userNom: string } }
+): Promise<MouvementCaisse | null> {
+  const existing = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM mouvements_caisse WHERE vente_id = ? AND type = 'apport'",
+    input.venteId
+  );
+  if (existing) return null;
+  return insertMouvement(db, {
+    type: 'apport',
+    caisseFromId: null,
+    caisseToId: input.caisseId,
+    montant: input.montant,
+    motif: 'Paiement vente huile',
+    statut: 'validee',
+    venteId: input.venteId,
+    createdBy: input.actor.userId,
+    createdByNom: input.actor.userNom,
+  });
+}
+
+export async function annulerCreditVente(db: SQLiteDatabase, venteId: string): Promise<void> {
+  await db.runAsync("DELETE FROM mouvements_caisse WHERE vente_id = ? AND type = 'apport'", venteId);
 }
 
 // L'agent (ou gérant) demande à retourner de l'argent à la caisse principale : en attente

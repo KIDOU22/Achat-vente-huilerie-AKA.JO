@@ -67,6 +67,7 @@ export interface Vente {
   montant: number;
   prixTransportKg: number;
   montantTransport: number;
+  paye: boolean;
   ts: number;
   createdBy: string;
   annulee: boolean;
@@ -113,6 +114,7 @@ export interface MouvementCaisse {
   motif: string;
   statut: MouvementStatut;
   peseeId: string | null;
+  venteId: string | null;
   createdBy: string;
   createdByNom: string;
   validatedBy: string | null;

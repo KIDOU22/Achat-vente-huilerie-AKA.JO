@@ -176,10 +176,11 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
   for (const row of data) {
     await db.runAsync(
       `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation,
-         poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, ts, created_by,
+         poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, paye, ts, created_by,
          annulee, annulee_par, motif_annulation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET montant = excluded.montant, montant_transport = excluded.montant_transport,
+         paye = excluded.paye,
          annulee = excluded.annulee, annulee_par = excluded.annulee_par, motif_annulation = excluded.motif_annulation`,
       row.id,
       row.num,
@@ -195,6 +196,7 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
       row.montant,
       row.prix_transport_kg,
       row.montant_transport,
+      row.paye ? 1 : 0,
       new Date(row.ts).getTime(),
       row.created_by,
       row.annulee ? 1 : 0,
@@ -251,8 +253,8 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
   for (const row of data) {
     await db.runAsync(
       `INSERT INTO mouvements_caisse
-         (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          statut = excluded.statut, validated_by = excluded.validated_by,
          validated_by_nom = excluded.validated_by_nom, validated_at = excluded.validated_at,
@@ -265,6 +267,7 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
       row.motif,
       row.statut,
       row.pesee_id,
+      row.vente_id,
       row.created_by,
       row.created_by_nom,
       row.validated_by,

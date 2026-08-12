@@ -147,6 +147,7 @@ export async function pushVente(v: Vente): Promise<PushResult> {
       montant: v.montant,
       prix_transport_kg: v.prixTransportKg,
       montant_transport: v.montantTransport,
+      paye: v.paye,
       ts: new Date(v.ts).toISOString(),
       created_by: v.createdBy,
       annulee: v.annulee,
@@ -178,6 +179,23 @@ export async function pushPayeStatus(peseeId: string, paye: boolean): Promise<Pu
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn('[sync] pushPayeStatus a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+export async function pushPayeStatusVente(venteId: string, paye: boolean): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(venteId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('ventes').update({ paye }).eq('id', venteId);
+    if (error) {
+      console.warn('[sync] pushPayeStatusVente a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushPayeStatusVente a échoué :', err);
     return { ok: false, error: message };
   }
 }
@@ -250,6 +268,7 @@ export async function pushMouvement(m: MouvementCaisse): Promise<PushResult> {
       motif: m.motif,
       statut: m.statut,
       pesee_id: m.peseeId,
+      vente_id: m.venteId,
       created_by: m.createdBy,
       created_by_nom: m.createdByNom,
       validated_by: m.validatedBy,
@@ -313,6 +332,23 @@ export async function pushDeleteMouvementForPesee(peseeId: string): Promise<Push
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn('[sync] pushDeleteMouvementForPesee a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+export async function pushDeleteMouvementForVente(venteId: string): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(venteId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('mouvements_caisse').delete().eq('vente_id', venteId).eq('type', 'apport');
+    if (error) {
+      console.warn('[sync] pushDeleteMouvementForVente a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushDeleteMouvementForVente a échoué :', err);
     return { ok: false, error: message };
   }
 }

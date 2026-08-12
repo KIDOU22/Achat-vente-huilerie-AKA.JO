@@ -15,17 +15,36 @@ type Row = { kind: 'pesee'; item: Pesee } | { kind: 'vente'; item: Vente };
 
 export function HistoriqueScreen() {
   const { isElevated } = useAuth();
-  const { pesees, ventes, planteurs, togglePaye, annulerPesee, annulerVente } = useAppData();
+  const { pesees, ventes, planteurs, caisses, togglePaye, togglePayeVente, annulerPesee, annulerVente } = useAppData();
   const [motifCible, setMotifCible] = useState<{ kind: 'pesee' | 'vente'; id: string } | null>(null);
   const [motif, setMotif] = useState('');
+  const [payerVenteCible, setPayerVenteCible] = useState<string | null>(null);
 
   const impayes = useMemo(() => pesees.filter((p) => !p.paye && !p.annulee), [pesees]);
   const impayesTotal = useMemo(() => impayes.reduce((s, p) => s + p.montant, 0), [impayes]);
   const planteurById = (id: string) => planteurs.find((p) => p.id === id);
+  const caissePrincipale = caisses.find((c) => c.type === 'principale');
+  const caisseBanque = caisses.find((c) => c.type === 'banque');
 
   function demanderAnnulation(kind: 'pesee' | 'vente', id: string) {
     setMotif('');
     setMotifCible({ kind, id });
+  }
+
+  function handleToggleVente(vente: Vente, paye: boolean) {
+    if (paye) {
+      // Le vendeur choisit la caisse destinataire avant que le paiement ne soit
+      // effectif — voir la modale "Quelle caisse reçoit ce paiement ?" ci-dessous.
+      setPayerVenteCible(vente.id);
+    } else {
+      togglePayeVente(vente.id, false);
+    }
+  }
+
+  function confirmerPaiementVente(caisseId: string) {
+    if (!payerVenteCible) return;
+    togglePayeVente(payerVenteCible, true, caisseId);
+    setPayerVenteCible(null);
   }
 
   function confirmerAnnulation() {
@@ -91,7 +110,12 @@ export function HistoriqueScreen() {
               onAnnuler={() => demanderAnnulation('pesee', row.item.id)}
             />
           ) : (
-            <VenteRow vente={row.item} isManager={isElevated} onAnnuler={() => demanderAnnulation('vente', row.item.id)} />
+            <VenteRow
+              vente={row.item}
+              isManager={isElevated}
+              onTogglePaye={(paye) => handleToggleVente(row.item, paye)}
+              onAnnuler={() => demanderAnnulation('vente', row.item.id)}
+            />
           )
         }
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
@@ -111,6 +135,29 @@ export function HistoriqueScreen() {
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Button label="Fermer" variant="outline" color={colors.textMuted} onPress={() => setMotifCible(null)} style={{ flex: 1 }} />
               <Button label="Annuler l'opération" onPress={confirmerAnnulation} color={colors.accent} style={{ flex: 1 }} />
+            </View>
+          </Card>
+        </View>
+      </Modal>
+
+      <Modal visible={!!payerVenteCible} transparent animationType="fade" onRequestClose={() => setPayerVenteCible(null)}>
+        <View style={styles.modalOverlay}>
+          <Card style={{ width: '100%', maxWidth: 360, gap: 12 }}>
+            <Text style={styles.cardTitleText}>Quelle caisse reçoit ce paiement ?</Text>
+            <View style={{ gap: 10 }}>
+              <Button
+                label="Caisse principale"
+                onPress={() => caissePrincipale && confirmerPaiementVente(caissePrincipale.id)}
+                disabled={!caissePrincipale}
+                color={colors.oil}
+              />
+              <Button
+                label="Banque"
+                onPress={() => caisseBanque && confirmerPaiementVente(caisseBanque.id)}
+                disabled={!caisseBanque}
+                color={colors.amber}
+              />
+              <Button label="Annuler" variant="outline" color={colors.textMuted} onPress={() => setPayerVenteCible(null)} />
             </View>
           </Card>
         </View>
@@ -179,7 +226,17 @@ function PeseeRow({
   );
 }
 
-function VenteRow({ vente, isManager, onAnnuler }: { vente: Vente; isManager: boolean; onAnnuler: () => void }) {
+function VenteRow({
+  vente,
+  isManager,
+  onTogglePaye,
+  onAnnuler,
+}: {
+  vente: Vente;
+  isManager: boolean;
+  onTogglePaye: (paye: boolean) => void;
+  onAnnuler: () => void;
+}) {
   return (
     <View style={[styles.card, { borderColor: `${colors.oil}44` }, vente.annulee && styles.cardAnnulee]}>
       <View style={styles.cardHeader}>
@@ -192,10 +249,22 @@ function VenteRow({ vente, isManager, onAnnuler }: { vente: Vente; isManager: bo
           </Text>
           <Text style={styles.cardMeta}>Chauffeur: {vente.chauffeur}</Text>
         </View>
-        {vente.annulee && (
+        {vente.annulee ? (
           <View style={styles.annuleePill}>
             <Text style={styles.annuleePillText}>Annulée</Text>
           </View>
+        ) : (
+          isManager && (
+            <Pressable
+              onPress={() => onTogglePaye(!vente.paye)}
+              style={[styles.payePill, { backgroundColor: vente.paye ? `${colors.frond}33` : `${colors.accent}33` }]}
+            >
+              {vente.paye ? <Check size={11} color={colors.frond} /> : <X size={11} color={colors.accent} />}
+              <Text style={{ color: vente.paye ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 11 }}>
+                {vente.paye ? 'Payé' : 'Impayé'}
+              </Text>
+            </Pressable>
+          )
         )}
       </View>
       {!!vente.annulee && !!vente.motifAnnulation && (
