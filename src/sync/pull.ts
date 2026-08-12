@@ -207,7 +207,11 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
 async function pullCaisses(db: SQLiteDatabase): Promise<void> {
   if (!supabase) return;
   const { data, error } = await supabase.from('caisses').select('*');
-  if (error || !data) return;
+  // Une réponse vide (mais sans erreur explicite) ne doit jamais déclencher la
+  // réconciliation ci-dessous : elle supprimerait alors TOUTES les caisses locales,
+  // y compris celle de l'utilisateur courant — un incident réseau ou RLS transitoire
+  // ne doit jamais pouvoir effacer des données locales légitimes.
+  if (error || !data || data.length === 0) return;
   const remoteIds = new Set<string>();
   for (const row of data) {
     remoteIds.add(row.id);
