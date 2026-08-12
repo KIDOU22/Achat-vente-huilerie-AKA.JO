@@ -208,7 +208,9 @@ async function pullCaisses(db: SQLiteDatabase): Promise<void> {
   if (!supabase) return;
   const { data, error } = await supabase.from('caisses').select('*');
   if (error || !data) return;
+  const remoteIds = new Set<string>();
   for (const row of data) {
+    remoteIds.add(row.id);
     const localUser = row.owner_identifiant
       ? await db.getFirstAsync<{ id: string }>(
           'SELECT id FROM users WHERE lower(identifiant) = lower(?)',
@@ -227,6 +229,15 @@ async function pullCaisses(db: SQLiteDatabase): Promise<void> {
       new Date(row.created_at).getTime()
     );
   }
+  // Une caisse fusionnée/supprimée côté Supabase (voir fusionnerCaissesUniquesEnDouble)
+  // doit aussi disparaître ici — sinon la prochaine repousse automatique de cet
+  // appareil la recréerait là-bas (un upsert sur un id qui n'existe plus le réinsère).
+  const localRows = await db.getAllAsync<{ id: string }>('SELECT id FROM caisses');
+  for (const { id } of localRows) {
+    if (!remoteIds.has(id)) {
+      await db.runAsync('DELETE FROM caisses WHERE id = ?', id);
+    }
+  }
 }
 
 async function pullMouvements(db: SQLiteDatabase): Promise<void> {
@@ -240,7 +251,8 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          statut = excluded.statut, validated_by = excluded.validated_by,
-         validated_by_nom = excluded.validated_by_nom, validated_at = excluded.validated_at`,
+         validated_by_nom = excluded.validated_by_nom, validated_at = excluded.validated_at,
+         caisse_from_id = excluded.caisse_from_id, caisse_to_id = excluded.caisse_to_id`,
       row.id,
       row.type,
       row.caisse_from_id,
