@@ -81,7 +81,10 @@ export async function syncSignOut(): Promise<void> {
 // Le compte cloud du nouvel utilisateur (s'il n'existe pas encore) se crée tout
 // seul, sans risque, la première fois que CET utilisateur se connecte lui-même
 // (voir syncSignIn ci-dessus) — jamais depuis l'appareil du Gérant.
-export async function syncUpdateProfile(identifiant: string, changes: { role?: Role; actif?: boolean }): Promise<void> {
+export async function syncUpdateProfile(
+  identifiant: string,
+  changes: { role?: Role; actif?: boolean; nom?: string; identifiant?: string }
+): Promise<void> {
   if (!supabase) return;
   try {
     await supabase.from('profiles').update(changes).eq('identifiant', identifiant.trim().toLowerCase());

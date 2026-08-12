@@ -1,5 +1,5 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import { Plus, RotateCcw, ShieldCheck, X } from 'lucide-react-native';
+import { Pencil, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
@@ -7,7 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { RoleBadge } from '../components/ui/RoleBadge';
 import { TextField } from '../components/ui/TextField';
-import { changeUserRole, createUser, listUsers, reinitialiserAcces, revokeUser } from '../db/repositories/users';
+import { changeUserRole, createUser, listUsers, reinitialiserAcces, renameUser, revokeUser } from '../db/repositories/users';
 import { getCaisseForUser } from '../db/repositories/caisses';
 import { logAudit } from '../db/repositories/audit';
 import { ROLE_LABELS, type Role, type User } from '../domain/types';
@@ -36,6 +36,10 @@ export function ComptesScreen() {
   const [resetCode, setResetCode] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetSaving, setResetSaving] = useState(false);
+
+  const [renameTarget, setRenameTarget] = useState<User | null>(null);
+  const [renameNom, setRenameNom] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     const all = await listUsers(db);
@@ -100,7 +104,7 @@ export function ComptesScreen() {
 
   async function handleRevoke(user: User) {
     if (!currentUser) return;
-    await revokeUser(db, user.id);
+    const revoked = await revokeUser(db, user.id);
     await logAudit(db, {
       userId: currentUser.id,
       userNom: currentUser.nom,
@@ -110,8 +114,12 @@ export function ComptesScreen() {
       details: `Révocation de l'accès de ${user.identifiant}`,
     });
     await refresh();
-    syncUpdateProfile(user.identifiant, { actif: false }).catch(() => {});
-    pushUser({ ...user, actif: false }).catch(() => {});
+    if (revoked) {
+      // Renomme aussi côté Supabase (contrainte unique sur identifiant) pour libérer
+      // l'identifiant d'origine — sinon impossible de recréer un compte avec.
+      syncUpdateProfile(user.identifiant, { actif: false, identifiant: revoked.identifiant }).catch(() => {});
+      pushUser(revoked).catch(() => {});
+    }
   }
 
   function openReset(user: User) {
@@ -152,6 +160,40 @@ export function ComptesScreen() {
       }
     } finally {
       setResetSaving(false);
+    }
+  }
+
+  function openRename(user: User) {
+    setRenameTarget(user);
+    setRenameNom(user.nom);
+  }
+
+  async function handleRename() {
+    if (!renameTarget || !currentUser || !renameNom.trim()) return;
+    const nom = renameNom.trim();
+    setRenameSaving(true);
+    try {
+      await renameUser(db, renameTarget.id, nom);
+      await logAudit(db, {
+        userId: currentUser.id,
+        userNom: currentUser.nom,
+        action: 'rename',
+        entity: 'user',
+        entityId: renameTarget.id,
+        details: `Nom changé de "${renameTarget.nom}" à "${nom}"`,
+      });
+      setRenameTarget(null);
+      await refresh();
+      syncUpdateProfile(renameTarget.identifiant, { nom }).catch(() => {});
+      const r = await pushUser({ ...renameTarget, nom }).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert(
+          'Synchro cloud échouée (nom modifié)',
+          `${r.error ?? 'Erreur inconnue'}\n\nLe nouveau nom ne sera pas visible sur un autre téléphone tant que la synchro n'aura pas réussi.`
+        );
+      }
+    } finally {
+      setRenameSaving(false);
     }
   }
 
@@ -239,6 +281,9 @@ export function ComptesScreen() {
                 </View>
                 {isManager && (
                   <View style={styles.userActions}>
+                    <Pressable onPress={() => openRename(u)} hitSlop={10}>
+                      <Pencil size={16} color={colors.textMuted} />
+                    </Pressable>
                     <Pressable onPress={() => openReset(u)} hitSlop={10}>
                       <RotateCcw size={16} color={colors.textMuted} />
                     </Pressable>
@@ -275,6 +320,30 @@ export function ComptesScreen() {
                 </View>
               ) : (
                 <RoleBadge role={u.role} />
+              )}
+
+              {isManager && renameTarget?.id === u.id && (
+                <View style={styles.resetForm}>
+                  <Text style={styles.resetTitle}>Renommer {renameTarget.nom}</Text>
+                  <TextField label="Nom complet" value={renameNom} onChangeText={setRenameNom} placeholder="Nom complet" />
+                  <View style={styles.grid2}>
+                    <Button
+                      label="Annuler"
+                      variant="outline"
+                      color={colors.textMuted}
+                      onPress={() => setRenameTarget(null)}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      label="Enregistrer"
+                      onPress={handleRename}
+                      loading={renameSaving}
+                      disabled={!renameNom.trim()}
+                      color={colors.frond}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                </View>
               )}
 
               {isManager && resetTarget?.id === u.id && (

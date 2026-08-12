@@ -84,8 +84,20 @@ export async function changeUserRole(db: SQLiteDatabase, id: string, role: Role)
   await db.runAsync('UPDATE users SET role = ? WHERE id = ?', role, id);
 }
 
-export async function revokeUser(db: SQLiteDatabase, id: string): Promise<void> {
-  await db.runAsync('UPDATE users SET actif = 0 WHERE id = ?', id);
+export async function renameUser(db: SQLiteDatabase, id: string, nom: string): Promise<void> {
+  await db.runAsync('UPDATE users SET nom = ? WHERE id = ?', nom.trim(), id);
+}
+
+// Révoque l'accès ET libère l'identifiant (en le renommant, unique en base et côté
+// Supabase) pour qu'il puisse être réutilisé par un nouveau compte — sinon
+// "Cet identifiant existe déjà" bloquerait indéfiniment sa recréation.
+export async function revokeUser(db: SQLiteDatabase, id: string): Promise<User | null> {
+  const before = await getUserById(db, id);
+  if (!before) return null;
+  const freedIdentifiant = `${before.identifiant}__revoked_${id}`;
+  await db.runAsync('UPDATE users SET actif = 0, identifiant = ? WHERE id = ?', freedIdentifiant, id);
+  await db.runAsync('UPDATE caisses SET owner_identifiant = ? WHERE user_id = ?', freedIdentifiant.toLowerCase(), id);
+  return getUserById(db, id);
 }
 
 export async function getUserById(db: SQLiteDatabase, id: string): Promise<User | null> {
