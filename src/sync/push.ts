@@ -220,6 +220,23 @@ export async function pushCaisse(c: Caisse): Promise<PushResult> {
   }
 }
 
+export async function pushDeleteCaisse(id: string): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('caisses').delete().eq('id', id);
+    if (error) {
+      console.warn('[sync] pushDeleteCaisse a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushDeleteCaisse a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
 export async function pushMouvement(m: MouvementCaisse): Promise<PushResult> {
   if (!supabase) return { ok: false, error: 'Supabase non configuré' };
   if (!UUID_RE.test(m.id)) return { ok: false, error: 'id local invalide (pas un UUID)' };

@@ -3,6 +3,7 @@ import { verifyCode } from '../auth/crypto';
 import { fusionnerCaissesUniquesEnDouble } from '../db/repositories/caisses';
 import { fusionnerPlanteursEnDouble } from '../db/repositories/planteurs';
 import { supabase } from '../lib/supabase';
+import { pushDeleteCaisse } from './push';
 
 // Tire les données distantes (déjà filtrées par les règles RLS côté serveur — un
 // agent ne recevra jamais les lignes/colonnes de ventes réservées au gérant) et les
@@ -27,10 +28,15 @@ export async function pullAll(db: SQLiteDatabase): Promise<void> {
     await pullCaisses(db);
     await pullMouvements(db);
     // Deux appareils réinstallés avant que la synchro ne fonctionne ont pu chacun
-    // créer leur propre caisse "principale"/"banque", ou les mêmes planteurs de
-    // démo — une synchro peut donc en ramener plusieurs : on les fusionne à chaque
-    // fois par sécurité.
-    await fusionnerCaissesUniquesEnDouble(db);
+    // créer leur propre caisse "principale"/"banque"/"secondaire", ou les mêmes
+    // planteurs de démo — une synchro peut donc en ramener plusieurs : on les
+    // fusionne à chaque fois par sécurité. Les caisses fusionnées localement sont
+    // aussi supprimées côté Supabase (best-effort) : sinon elles restent invisibles
+    // ici mais continuent d'exister là-bas, et un autre appareil les retélécharge.
+    const deletedCaisseIds = await fusionnerCaissesUniquesEnDouble(db);
+    for (const id of deletedCaisseIds) {
+      pushDeleteCaisse(id).catch(() => {});
+    }
     await fusionnerPlanteursEnDouble(db);
   } catch (err) {
     console.warn('[sync] pullAll a échoué :', err);

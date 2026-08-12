@@ -76,11 +76,18 @@ export async function getCaisseBanque(db: SQLiteDatabase): Promise<Caisse | null
   return row ? toCaisse(row) : null;
 }
 
-// Deux appareils réinstallés avant que la synchro cloud ne fonctionne ont pu chacun
-// créer leur propre caisse "principale"/"banque" (normalement uniques). Fusionne les
-// doublons vers le plus ancien : réattribue ses mouvements puis supprime les autres.
-// Idempotent — sans effet si un seul exemplaire de chaque existe déjà.
-export async function fusionnerCaissesUniquesEnDouble(db: SQLiteDatabase): Promise<void> {
+// Chaque appareil réinstallé avant que la synchro cloud ne fonctionne bien a pu
+// créer sa propre caisse "principale"/"banque" (normalement uniques), et sa propre
+// caisse "secondaire" pour un identifiant déjà existant ailleurs (ex: "gerant"/
+// "bascule1" de démonstration, recréés à chaque installation neuve). Fusionne les
+// doublons vers le plus ancien de chaque groupe : réattribue ses mouvements puis
+// supprime les autres. Idempotent — sans effet si aucun doublon. Renvoie les id des
+// caisses supprimées localement, pour que l'appelant puisse aussi les effacer côté
+// Supabase (sinon elles ne réapparaissent pas ici, mais continuent d'exister
+// là-bas — voir pull.ts).
+export async function fusionnerCaissesUniquesEnDouble(db: SQLiteDatabase): Promise<string[]> {
+  const deletedIds: string[] = [];
+
   for (const type of ['principale', 'banque'] as const) {
     const rows = await db.getAllAsync<{ id: string }>(
       'SELECT id FROM caisses WHERE type = ? ORDER BY created_at ASC, id ASC',
@@ -92,8 +99,29 @@ export async function fusionnerCaissesUniquesEnDouble(db: SQLiteDatabase): Promi
       await db.runAsync('UPDATE mouvements_caisse SET caisse_from_id = ? WHERE caisse_from_id = ?', keep.id, extra.id);
       await db.runAsync('UPDATE mouvements_caisse SET caisse_to_id = ? WHERE caisse_to_id = ?', keep.id, extra.id);
       await db.runAsync('DELETE FROM caisses WHERE id = ?', extra.id);
+      deletedIds.push(extra.id);
     }
   }
+
+  const owners = await db.getAllAsync<{ owner_identifiant: string }>(
+    "SELECT DISTINCT owner_identifiant FROM caisses WHERE type = 'secondaire' AND owner_identifiant IS NOT NULL"
+  );
+  for (const { owner_identifiant } of owners) {
+    const rows = await db.getAllAsync<{ id: string }>(
+      "SELECT id FROM caisses WHERE type = 'secondaire' AND owner_identifiant = ? ORDER BY created_at ASC, id ASC",
+      owner_identifiant
+    );
+    if (rows.length <= 1) continue;
+    const [keep, ...extras] = rows;
+    for (const extra of extras) {
+      await db.runAsync('UPDATE mouvements_caisse SET caisse_from_id = ? WHERE caisse_from_id = ?', keep.id, extra.id);
+      await db.runAsync('UPDATE mouvements_caisse SET caisse_to_id = ? WHERE caisse_to_id = ?', keep.id, extra.id);
+      await db.runAsync('DELETE FROM caisses WHERE id = ?', extra.id);
+      deletedIds.push(extra.id);
+    }
+  }
+
+  return deletedIds;
 }
 
 export async function getCaisseForUser(db: SQLiteDatabase, userId: string): Promise<Caisse | null> {
