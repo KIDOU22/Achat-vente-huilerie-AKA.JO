@@ -321,7 +321,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           const mouvement = await enregistrerDepensePesee(db, {
             caisseId: caisse.id,
             peseeId: id,
-            montant: pesee.montant,
+            // Le paiement couvre le régime ET le transport — les deux sortent de la
+            // même caisse au moment où la pesée est marquée payée.
+            montant: pesee.montant + pesee.montantTransport,
             actor: { userId: currentUser.id, userNom: currentUser.nom },
           });
           if (mouvement) pushMouvement(mouvement).catch(() => {});

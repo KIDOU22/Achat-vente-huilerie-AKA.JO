@@ -130,13 +130,15 @@ export function CaisseScreen() {
     () => mouvements.filter((m) => m.type === 'retour' && m.statut === 'en_attente'),
     [mouvements]
   );
-  // Transferts en attente d'acceptation par le destinataire (moi) — sauf ceux
-  // impliquant la banque, réservés au Gérant (voir banqueTransfertsEnAttente).
+  // Transferts et allocations en attente d'acceptation par le destinataire (moi) —
+  // sauf ceux impliquant la banque, réservés au Gérant (voir banqueTransfertsEnAttente).
+  // Une allocation (argent envoyé par le Gérant depuis la caisse principale) doit
+  // aussi être confirmée avant de devenir effective, comme un transfert entre pairs.
   const transfertsRecus = useMemo(
     () =>
       mouvements.filter(
         (m) =>
-          m.type === 'transfert' &&
+          (m.type === 'transfert' || m.type === 'allocation') &&
           m.statut === 'en_attente' &&
           m.caisseToId === maCaisse?.id &&
           m.caisseFromId !== banque?.id
@@ -342,7 +344,7 @@ export function CaisseScreen() {
 
       {transfertsRecus.length > 0 && (
         <View style={{ gap: 8 }}>
-          <Text style={styles.sectionTitle}>Transferts à confirmer</Text>
+          <Text style={styles.sectionTitle}>Virements reçus à confirmer</Text>
           {transfertsRecus.map((m) => (
             <MouvementRow key={m.id} m={m} nomDe={nomCaisse} caisses={caisses} onPress={() => confirmValider(m)} />
           ))}

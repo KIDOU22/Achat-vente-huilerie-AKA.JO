@@ -253,8 +253,9 @@ async function insertMouvement(
   };
 }
 
-// Le Gérant alimente la caisse d'un utilisateur (agent ou gérant) depuis la caisse principale.
-// Effectif immédiatement : c'est déjà le Gérant qui l'initie.
+// Le Gérant alimente la caisse d'un utilisateur (agent ou gérant) depuis la caisse
+// principale. En attente jusqu'à ce que le destinataire confirme l'avoir reçu — il
+// ne doit pas pouvoir devenir effectif sans son accord (voir CaisseScreen).
 export async function allouer(
   db: SQLiteDatabase,
   input: { toCaisseId: string; montant: number; motif: string; actor: { userId: string; userNom: string } }
@@ -267,7 +268,7 @@ export async function allouer(
     caisseToId: input.toCaisseId,
     montant: input.montant,
     motif: input.motif,
-    statut: 'validee',
+    statut: 'en_attente',
     createdBy: input.actor.userId,
     createdByNom: input.actor.userNom,
   });
