@@ -7,11 +7,13 @@
 -- inchangé.
 -- À exécuter : Dashboard > SQL Editor > New query > coller > Run
 
-alter table public.ventes drop column if exists chauffeur_id;
-
--- Redéfinition complète (pas CREATE OR REPLACE) : retirer une colonne existante de
--- la vue exige de la recréer, Postgres interdit un simple remplacement dans ce cas.
+-- La vue dépend de la colonne : elle doit être supprimée AVANT (Postgres refuse de
+-- droper une colonne encore référencée par une vue), puis recréée. Redéfinition
+-- complète (pas CREATE OR REPLACE) : retirer une colonne existante d'une vue exige
+-- de la recréer, Postgres interdit un simple remplacement dans ce cas.
 drop view if exists public.ventes_agent_view;
+
+alter table public.ventes drop column if exists chauffeur_id;
 
 create view public.ventes_agent_view as
 select id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation,
