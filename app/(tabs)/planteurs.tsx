@@ -1,3 +1,3 @@
-import { PlanteursScreen } from '../../src/screens/PlanteursScreen';
+import { PartenairesScreen } from '../../src/screens/PartenairesScreen';
 
-export default PlanteursScreen;
+export default PartenairesScreen;

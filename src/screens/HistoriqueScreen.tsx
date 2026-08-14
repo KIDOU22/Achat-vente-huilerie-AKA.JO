@@ -18,7 +18,7 @@ export function HistoriqueScreen() {
   const {
     pesees,
     ventes,
-    planteurs,
+    partenaires,
     caisses,
     togglePayeRegime,
     togglePayeTransportRegime,
@@ -40,7 +40,7 @@ export function HistoriqueScreen() {
       impayes.reduce((s, p) => s + (p.payeRegime ? 0 : p.montant) + (p.payeTransport ? 0 : p.montantTransport), 0),
     [impayes]
   );
-  const planteurById = (id: string) => planteurs.find((p) => p.id === id);
+  const planteurById = (id: string) => partenaires.find((p) => p.id === id);
   const caissePrincipale = caisses.find((c) => c.type === 'principale');
   const caisseBanque = caisses.find((c) => c.type === 'banque');
 

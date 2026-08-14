@@ -350,8 +350,11 @@ function renderPlanteurs(planteurs, pesees) {
   for (const p of pesees) {
     tonnageByPlanteur[p.planteur_id] = (tonnageByPlanteur[p.planteur_id] || 0) + p.net;
   }
+  // La table "planteurs" couvre aussi les ponts indépendants et les chauffeurs
+  // (colonne "type") — cette liste ne montre que les planteurs proprement dits.
+  const seulsPlanteurs = planteurs.filter((pl) => !pl.type || pl.type === 'planteur');
   const tbody = document.querySelector('#table-planteurs tbody');
-  tbody.innerHTML = planteurs.map((pl) => `
+  tbody.innerHTML = seulsPlanteurs.map((pl) => `
     <tr>
       <td>${pl.nom}</td>
       <td>${pl.village}</td>

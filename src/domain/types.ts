@@ -20,11 +20,26 @@ export interface User {
   createdAt: number;
 }
 
-export interface Planteur {
+export type PartenaireType = 'planteur' | 'pont_independant' | 'chauffeur';
+
+export const PARTENAIRE_TYPE_LABELS: Record<PartenaireType, string> = {
+  planteur: 'Planteur',
+  pont_independant: 'Pont indépendant',
+  chauffeur: 'Chauffeur',
+};
+
+// Fournisseur de régime (planteur ou pont indépendant) ou chauffeur — toute
+// personne/structure avec qui l'huilerie a une relation financière suivie
+// (tonnage livré, montant reçu, solde). "village" sert au planteur,
+// "localisation"/"responsable" au pont indépendant ; "tel" est commun aux trois.
+export interface Partenaire {
   id: string;
+  type: PartenaireType;
   nom: string;
   village: string;
   tel: string;
+  localisation: string;
+  responsable: string;
   createdAt: number;
 }
 
@@ -34,6 +49,7 @@ export interface Pesee {
   numTicketPesee: string;
   planteurId: string;
   chauffeur: string;
+  chauffeurId: string | null;
   typeVehicule: string;
   immatriculation: string;
   origine: string;
@@ -59,6 +75,7 @@ export interface Vente {
   numTicketPesee: string;
   client: string;
   chauffeur: string;
+  chauffeurId: string | null;
   typeVehicule: string;
   immatriculation: string;
   poidsCharge: number;
@@ -117,6 +134,10 @@ export interface MouvementCaisse {
   statut: MouvementStatut;
   peseeId: string | null;
   venteId: string | null;
+  // Non nul pour un règlement enregistré directement contre le solde global d'un
+  // partenaire (paiement partiel/échéance, ou paiement groupé de plusieurs
+  // livraisons) — plutôt que pour une pesée/vente précise.
+  partenaireId: string | null;
   volet: 'produit' | 'transport' | null;
   createdBy: string;
   createdByNom: string;

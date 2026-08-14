@@ -3,7 +3,7 @@ import { hashCode } from '../auth/crypto';
 import { uid } from '../domain/format';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fusionnerCaissesUniquesEnDouble } from './repositories/caisses';
-import { fusionnerPlanteursEnDouble } from './repositories/planteurs';
+import { fusionnerPlanteursEnDouble } from './repositories/partenaires';
 
 export const DATABASE_NAME = 'huilerie-akajo.db';
 
@@ -24,9 +24,12 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS planteurs (
   id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL DEFAULT 'planteur',
   nom TEXT NOT NULL,
   village TEXT NOT NULL DEFAULT '—',
   tel TEXT NOT NULL DEFAULT '—',
+  localisation TEXT NOT NULL DEFAULT '—',
+  responsable TEXT NOT NULL DEFAULT '—',
   created_at INTEGER NOT NULL
 );
 
@@ -36,6 +39,7 @@ CREATE TABLE IF NOT EXISTS pesees (
   num_ticket TEXT NOT NULL,
   planteur_id TEXT NOT NULL REFERENCES planteurs(id),
   chauffeur TEXT NOT NULL,
+  chauffeur_id TEXT,
   type_vehicule TEXT NOT NULL,
   immatriculation TEXT NOT NULL,
   origine TEXT NOT NULL DEFAULT '—',
@@ -60,6 +64,7 @@ CREATE TABLE IF NOT EXISTS ventes (
   num_ticket TEXT NOT NULL,
   client TEXT NOT NULL,
   chauffeur TEXT NOT NULL,
+  chauffeur_id TEXT,
   type_vehicule TEXT NOT NULL,
   immatriculation TEXT NOT NULL,
   poids_charge REAL NOT NULL,
@@ -112,6 +117,7 @@ CREATE TABLE IF NOT EXISTS mouvements_caisse (
   statut TEXT NOT NULL CHECK (statut IN ('en_attente', 'validee', 'rejetee')),
   pesee_id TEXT,
   vente_id TEXT,
+  partenaire_id TEXT,
   volet TEXT,
   created_by TEXT NOT NULL,
   created_by_nom TEXT NOT NULL,
@@ -149,6 +155,12 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'ventes', 'paye_transport', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(db, 'mouvements_caisse', 'volet', 'TEXT');
   await backfillPaiementSepare(db);
+  await ensureColumn(db, 'planteurs', 'type', "TEXT NOT NULL DEFAULT 'planteur'");
+  await ensureColumn(db, 'planteurs', 'localisation', "TEXT NOT NULL DEFAULT '—'");
+  await ensureColumn(db, 'planteurs', 'responsable', "TEXT NOT NULL DEFAULT '—'");
+  await ensureColumn(db, 'pesees', 'chauffeur_id', 'TEXT');
+  await ensureColumn(db, 'ventes', 'chauffeur_id', 'TEXT');
+  await ensureColumn(db, 'mouvements_caisse', 'partenaire_id', 'TEXT');
   await ensureUsersAllowsDirigeant(db);
   await seedIfEmpty(db);
   await fusionnerCaissesUniquesEnDouble(db);

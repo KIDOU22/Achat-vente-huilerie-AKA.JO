@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { Caisse, MouvementCaisse, MouvementStatut, Pesee, Planteur, User, Vente } from '../domain/types';
+import type { Caisse, MouvementCaisse, MouvementStatut, Partenaire, Pesee, User, Vente } from '../domain/types';
 
 // Toutes les fonctions ci-dessous sont "best-effort" : si Supabase n'est pas
 // configuré ou si l'appareil est hors-ligne, l'erreur est journalisée sans jamais
@@ -16,42 +16,45 @@ export interface PushResult {
   error?: string;
 }
 
-export async function pushPlanteur(p: Planteur): Promise<PushResult> {
+export async function pushPartenaire(p: Partenaire): Promise<PushResult> {
   if (!supabase) return { ok: false, error: 'Supabase non configuré' };
   if (!UUID_RE.test(p.id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
   try {
     const { error } = await supabase.from('planteurs').upsert({
       id: p.id,
+      type: p.type,
       nom: p.nom,
       village: p.village,
       tel: p.tel,
+      localisation: p.localisation,
+      responsable: p.responsable,
       created_at: new Date(p.createdAt).toISOString(),
     });
     if (error) {
-      console.warn('[sync] pushPlanteur a échoué :', error.message);
+      console.warn('[sync] pushPartenaire a échoué :', error.message);
       return { ok: false, error: error.message };
     }
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn('[sync] pushPlanteur a échoué :', err);
+    console.warn('[sync] pushPartenaire a échoué :', err);
     return { ok: false, error: message };
   }
 }
 
-export async function pushDeletePlanteur(id: string): Promise<PushResult> {
+export async function pushDeletePartenaire(id: string): Promise<PushResult> {
   if (!supabase) return { ok: false, error: 'Supabase non configuré' };
   if (!UUID_RE.test(id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
   try {
     const { error } = await supabase.from('planteurs').delete().eq('id', id);
     if (error) {
-      console.warn('[sync] pushDeletePlanteur a échoué :', error.message);
+      console.warn('[sync] pushDeletePartenaire a échoué :', error.message);
       return { ok: false, error: error.message };
     }
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn('[sync] pushDeletePlanteur a échoué :', err);
+    console.warn('[sync] pushDeletePartenaire a échoué :', err);
     return { ok: false, error: message };
   }
 }
@@ -99,6 +102,7 @@ export async function pushPesee(p: Pesee): Promise<PushResult> {
       num_ticket: p.numTicketPesee,
       planteur_id: p.planteurId,
       chauffeur: p.chauffeur,
+      chauffeur_id: p.chauffeurId,
       type_vehicule: p.typeVehicule,
       immatriculation: p.immatriculation,
       origine: p.origine,
@@ -139,6 +143,7 @@ export async function pushVente(v: Vente): Promise<PushResult> {
       num_ticket: v.numTicketPesee,
       client: v.client,
       chauffeur: v.chauffeur,
+      chauffeur_id: v.chauffeurId,
       type_vehicule: v.typeVehicule,
       immatriculation: v.immatriculation,
       poids_charge: v.poidsCharge,
@@ -305,6 +310,7 @@ export async function pushMouvement(m: MouvementCaisse): Promise<PushResult> {
       statut: m.statut,
       pesee_id: m.peseeId,
       vente_id: m.venteId,
+      partenaire_id: m.partenaireId,
       volet: m.volet,
       created_by: m.createdBy,
       created_by_nom: m.createdByNom,

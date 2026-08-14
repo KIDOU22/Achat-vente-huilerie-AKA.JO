@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { verifyCode } from '../auth/crypto';
 import { fusionnerCaissesUniquesEnDouble } from '../db/repositories/caisses';
-import { fusionnerPlanteursEnDouble } from '../db/repositories/planteurs';
+import { fusionnerPlanteursEnDouble } from '../db/repositories/partenaires';
 import { supabase } from '../lib/supabase';
 import { pushDeleteCaisse } from './push';
 
@@ -117,12 +117,17 @@ async function pullPlanteurs(db: SQLiteDatabase): Promise<void> {
   if (error || !data) return;
   for (const row of data) {
     await db.runAsync(
-      `INSERT INTO planteurs (id, nom, village, tel, created_at) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET nom = excluded.nom, village = excluded.village, tel = excluded.tel`,
+      `INSERT INTO planteurs (id, type, nom, village, tel, localisation, responsable, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         type = excluded.type, nom = excluded.nom, village = excluded.village, tel = excluded.tel,
+         localisation = excluded.localisation, responsable = excluded.responsable`,
       row.id,
+      row.type ?? 'planteur',
       row.nom,
       row.village,
       row.tel,
+      row.localisation ?? '—',
+      row.responsable ?? '—',
       new Date(row.created_at).getTime()
     );
   }
@@ -134,11 +139,12 @@ async function pullPesees(db: SQLiteDatabase): Promise<void> {
   if (error || !data) return;
   for (const row of data) {
     await db.runAsync(
-      `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, type_vehicule, immatriculation, origine,
+      `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, chauffeur_id, type_vehicule, immatriculation, origine,
          poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye_regime, paye_transport, ts, created_by,
          annulee, annulee_par, motif_annulation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
+         chauffeur = excluded.chauffeur, chauffeur_id = excluded.chauffeur_id,
          paye_regime = excluded.paye_regime, paye_transport = excluded.paye_transport,
          montant = excluded.montant, montant_transport = excluded.montant_transport,
          annulee = excluded.annulee, annulee_par = excluded.annulee_par, motif_annulation = excluded.motif_annulation`,
@@ -147,6 +153,7 @@ async function pullPesees(db: SQLiteDatabase): Promise<void> {
       row.num_ticket,
       row.planteur_id,
       row.chauffeur,
+      row.chauffeur_id,
       row.type_vehicule,
       row.immatriculation,
       row.origine,
@@ -177,11 +184,12 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
   if (error || !data) return;
   for (const row of data) {
     await db.runAsync(
-      `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation,
+      `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, chauffeur_id, type_vehicule, immatriculation,
          poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, paye_huile, paye_transport, ts, created_by,
          annulee, annulee_par, motif_annulation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET montant = excluded.montant, montant_transport = excluded.montant_transport,
+         chauffeur = excluded.chauffeur, chauffeur_id = excluded.chauffeur_id,
          paye_huile = excluded.paye_huile, paye_transport = excluded.paye_transport,
          annulee = excluded.annulee, annulee_par = excluded.annulee_par, motif_annulation = excluded.motif_annulation`,
       row.id,
@@ -189,6 +197,7 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
       row.num_ticket,
       row.client,
       row.chauffeur,
+      row.chauffeur_id,
       row.type_vehicule,
       row.immatriculation,
       row.poids_charge,
@@ -256,13 +265,13 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
   for (const row of data) {
     await db.runAsync(
       `INSERT INTO mouvements_caisse
-         (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, volet, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, partenaire_id, volet, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          statut = excluded.statut, validated_by = excluded.validated_by,
          validated_by_nom = excluded.validated_by_nom, validated_at = excluded.validated_at,
          caisse_from_id = excluded.caisse_from_id, caisse_to_id = excluded.caisse_to_id,
-         montant = excluded.montant, volet = excluded.volet`,
+         montant = excluded.montant, volet = excluded.volet, partenaire_id = excluded.partenaire_id`,
       row.id,
       row.type,
       row.caisse_from_id,
@@ -272,6 +281,7 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
       row.statut,
       row.pesee_id,
       row.vente_id,
+      row.partenaire_id,
       row.volet,
       row.created_by,
       row.created_by_nom,

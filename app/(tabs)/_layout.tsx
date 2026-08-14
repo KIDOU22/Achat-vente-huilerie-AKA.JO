@@ -40,7 +40,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="planteurs"
-        options={{ title: 'Planteurs', tabBarIcon: ({ color, size }) => <Users color={color} size={size} /> }}
+        options={{ title: 'Partenaires', tabBarIcon: ({ color, size }) => <Users color={color} size={size} /> }}
       />
       <Tabs.Screen
         name="historique"

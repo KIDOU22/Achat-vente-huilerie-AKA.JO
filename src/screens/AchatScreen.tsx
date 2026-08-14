@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { AchatTicketCard } from '../components/TicketCard';
-import { PlanteurPicker } from '../components/PlanteurPicker';
+import { PartenairePicker } from '../components/PartenairePicker';
 import { Button } from '../components/ui/Button';
 import { ScaleInput } from '../components/ui/ScaleInput';
 import { SectionTitle } from '../components/ui/SectionTitle';
@@ -18,11 +18,13 @@ import { fonts } from '../theme/typography';
 
 export function AchatScreen() {
   const { isManager } = useAuth();
-  const { planteurs, enregistrerPesee, prixKg, setPrixKg, prixTransportRegime, setPrixTransportRegime } = useAppData();
+  const { partenaires, enregistrerPesee, prixKg, setPrixKg, prixTransportRegime, setPrixTransportRegime } = useAppData();
+  const fournisseurs = useMemo(() => partenaires.filter((p) => p.type === 'planteur' || p.type === 'pont_independant'), [partenaires]);
+  const chauffeurs = useMemo(() => partenaires.filter((p) => p.type === 'chauffeur'), [partenaires]);
 
-  const [selectedPlanteur, setSelectedPlanteur] = useState(planteurs[0]?.id ?? '');
+  const [selectedPlanteur, setSelectedPlanteur] = useState(fournisseurs[0]?.id ?? '');
   const [numTicketPesee, setNumTicketPesee] = useState('');
-  const [chauffeur, setChauffeur] = useState('');
+  const [selectedChauffeur, setSelectedChauffeur] = useState('');
   const [typeVehicule, setTypeVehicule] = useState<VehiculeRegime>(VEHICULES_REGIME[0]);
   const [immatriculation, setImmatriculation] = useState('');
   const [origine, setOrigine] = useState('');
@@ -43,7 +45,7 @@ export function AchatScreen() {
   const montantTransport = Math.round(netAchat * prixTransportNum);
 
   const canSubmit =
-    !!selectedPlanteur && netAchat > 0 && !!chauffeur.trim() && !!immatriculation.trim() && !!numTicketPesee.trim();
+    !!selectedPlanteur && netAchat > 0 && !!selectedChauffeur && !!immatriculation.trim() && !!numTicketPesee.trim();
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -52,7 +54,7 @@ export function AchatScreen() {
       const ticket = await enregistrerPesee({
         numTicketPesee,
         planteurId: selectedPlanteur,
-        chauffeur,
+        chauffeurId: selectedChauffeur,
         typeVehicule,
         immatriculation,
         origine,
@@ -63,7 +65,6 @@ export function AchatScreen() {
       });
       setLastTicket(ticket);
       setNumTicketPesee('');
-      setChauffeur('');
       setImmatriculation('');
       setOrigine('');
       setPoidsCharge('');
@@ -73,13 +74,19 @@ export function AchatScreen() {
     }
   }
 
-  const planteurById = planteurs.find((p) => p.id === lastTicket?.planteurId);
+  const planteurById = partenaires.find((p) => p.id === lastTicket?.planteurId);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <SectionTitle>Achat de régimes</SectionTitle>
 
-      <PlanteurPicker planteurs={planteurs} selectedId={selectedPlanteur} onSelect={setSelectedPlanteur} />
+      <PartenairePicker
+        label="Fournisseur (planteur ou pont indépendant)"
+        placeholder="Aucun fournisseur — ajoutez-en un dans Partenaires"
+        partenaires={fournisseurs}
+        selectedId={selectedPlanteur}
+        onSelect={setSelectedPlanteur}
+      />
 
       <TextField
         label="N° ticket de pesée (pont-bascule)"
@@ -98,7 +105,14 @@ export function AchatScreen() {
 
       <View style={styles.grid2}>
         <View style={{ flex: 1 }}>
-          <TextField label="Chauffeur" value={chauffeur} onChangeText={setChauffeur} placeholder="Nom du chauffeur" />
+          <PartenairePicker
+            label="Chauffeur"
+            placeholder="Aucun chauffeur — ajoutez-en un dans Partenaires"
+            partenaires={chauffeurs}
+            selectedId={selectedChauffeur}
+            onSelect={setSelectedChauffeur}
+            metaLine={(p) => p.tel}
+          />
         </View>
         <View style={{ flex: 1 }}>
           <TextField label="Immatriculation" value={immatriculation} onChangeText={setImmatriculation} placeholder="CI-4521-AB" />

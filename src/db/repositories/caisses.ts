@@ -31,6 +31,7 @@ interface MouvementRow {
   statut: MouvementStatut;
   pesee_id: string | null;
   vente_id: string | null;
+  partenaire_id: string | null;
   volet: 'produit' | 'transport' | null;
   created_by: string;
   created_by_nom: string;
@@ -51,6 +52,7 @@ function toMouvement(row: MouvementRow): MouvementCaisse {
     statut: row.statut,
     peseeId: row.pesee_id,
     venteId: row.vente_id,
+    partenaireId: row.partenaire_id,
     volet: row.volet,
     createdBy: row.created_by,
     createdByNom: row.created_by_nom,
@@ -217,6 +219,7 @@ async function insertMouvement(
     statut: MouvementStatut;
     peseeId?: string | null;
     venteId?: string | null;
+    partenaireId?: string | null;
     volet?: 'produit' | 'transport' | null;
     createdBy: string;
     createdByNom: string;
@@ -226,8 +229,8 @@ async function insertMouvement(
   const ts = Date.now();
   await db.runAsync(
     `INSERT INTO mouvements_caisse
-       (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, volet, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+       (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, partenaire_id, volet, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
     id,
     input.type,
     input.caisseFromId,
@@ -237,6 +240,7 @@ async function insertMouvement(
     input.statut,
     input.peseeId ?? null,
     input.venteId ?? null,
+    input.partenaireId ?? null,
     input.volet ?? null,
     input.createdBy,
     input.createdByNom,
@@ -253,6 +257,7 @@ async function insertMouvement(
     statut: input.statut,
     peseeId: input.peseeId ?? null,
     venteId: input.venteId ?? null,
+    partenaireId: input.partenaireId ?? null,
     volet: input.volet ?? null,
     createdBy: input.createdBy,
     createdByNom: input.createdByNom,
@@ -443,6 +448,46 @@ export async function annulerPaiementVente(
   volet: 'produit' | 'transport'
 ): Promise<void> {
   await db.runAsync('DELETE FROM mouvements_caisse WHERE vente_id = ? AND volet = ?', venteId, volet);
+}
+
+// Règlement (échéance) : paiement enregistré contre le solde global d'un partenaire
+// plutôt que pour une pesée/vente précise — couvre le cas d'une avance, d'un solde
+// payé en plusieurs fois, ou d'un règlement groupé de plusieurs livraisons (ex. fin
+// de mois). "produit" = montant dû au planteur/pont indépendant (régime livré) ;
+// "transport" = montant dû au chauffeur. Toujours une dépense (ça sort d'une
+// caisse), jamais lié à pesee_id/vente_id.
+export async function enregistrerReglement(
+  db: SQLiteDatabase,
+  input: {
+    caisseId: string;
+    partenaireId: string;
+    volet: 'produit' | 'transport';
+    montant: number;
+    motif: string;
+    actor: { userId: string; userNom: string };
+  }
+): Promise<MouvementCaisse> {
+  const m = await insertMouvement(db, {
+    type: 'depense',
+    caisseFromId: input.caisseId,
+    caisseToId: null,
+    montant: input.montant,
+    motif: input.motif || (input.volet === 'produit' ? 'Règlement partenaire' : 'Règlement transport'),
+    statut: 'validee',
+    partenaireId: input.partenaireId,
+    volet: input.volet,
+    createdBy: input.actor.userId,
+    createdByNom: input.actor.userNom,
+  });
+  await logAudit(db, {
+    userId: input.actor.userId,
+    userNom: input.actor.userNom,
+    action: 'reglement_partenaire',
+    entity: 'partenaire',
+    entityId: input.partenaireId,
+    details: `Règlement (${input.volet}) de ${input.montant} F${input.motif ? ` — ${input.motif}` : ''}`,
+  });
+  return m;
 }
 
 // L'agent (ou gérant) demande à retourner de l'argent à la caisse principale : en attente

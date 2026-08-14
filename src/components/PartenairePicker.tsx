@@ -1,36 +1,36 @@
 import { ChevronDown, Search, X } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import type { Planteur } from '../domain/types';
+import type { Partenaire } from '../domain/types';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
-interface PlanteurPickerProps {
-  planteurs: Planteur[];
+interface PartenairePickerProps {
+  label: string;
+  placeholder: string;
+  partenaires: Partenaire[];
   selectedId: string;
   onSelect: (id: string) => void;
+  metaLine?: (p: Partenaire) => string;
 }
 
-export function PlanteurPicker({ planteurs, selectedId, onSelect }: PlanteurPickerProps) {
+export function PartenairePicker({ label, placeholder, partenaires, selectedId, onSelect, metaLine }: PartenairePickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const selected = planteurs.find((p) => p.id === selectedId);
+  const selected = partenaires.find((p) => p.id === selectedId);
   const filtered = useMemo(
-    () => planteurs.filter((p) => p.nom.toLowerCase().includes(search.toLowerCase())),
-    [planteurs, search]
+    () => partenaires.filter((p) => p.nom.toLowerCase().includes(search.toLowerCase())),
+    [partenaires, search]
   );
+  const meta = metaLine ?? ((p: Partenaire) => p.village);
 
   return (
     <View>
-      <Text style={styles.label}>Planteur</Text>
+      <Text style={styles.label}>{label}</Text>
       <Pressable style={styles.trigger} onPress={() => setOpen(true)}>
         <Text style={styles.triggerText} numberOfLines={1}>
-          {planteurs.length === 0
-            ? 'Aucun planteur — ajoutez-en un'
-            : selected
-              ? `${selected.nom} — ${selected.village}`
-              : 'Sélectionner un planteur'}
+          {partenaires.length === 0 ? placeholder : selected ? `${selected.nom} — ${meta(selected)}` : placeholder}
         </Text>
         <ChevronDown size={18} color={colors.textMuted} />
       </Pressable>
@@ -39,7 +39,7 @@ export function PlanteurPicker({ planteurs, selectedId, onSelect }: PlanteurPick
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Choisir un planteur</Text>
+              <Text style={styles.sheetTitle}>{label}</Text>
               <Pressable onPress={() => setOpen(false)} hitSlop={10}>
                 <X size={20} color={colors.textMuted} />
               </Pressable>
@@ -49,7 +49,7 @@ export function PlanteurPicker({ planteurs, selectedId, onSelect }: PlanteurPick
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Rechercher un planteur"
+                placeholder="Rechercher"
                 placeholderTextColor={colors.placeholder}
                 style={styles.searchInput}
                 autoFocus
@@ -69,7 +69,7 @@ export function PlanteurPicker({ planteurs, selectedId, onSelect }: PlanteurPick
                   }}
                 >
                   <Text style={styles.itemName}>{item.nom}</Text>
-                  <Text style={styles.itemMeta}>{item.village}</Text>
+                  <Text style={styles.itemMeta}>{meta(item)}</Text>
                 </Pressable>
               )}
               ListEmptyComponent={<Text style={styles.empty}>Aucun résultat</Text>}

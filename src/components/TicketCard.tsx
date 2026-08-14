@@ -3,11 +3,11 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 import { formatDateLabel, formatFCFA, formatKg, formatTime } from '../domain/format';
-import type { Pesee, Planteur, Vente } from '../domain/types';
+import type { Partenaire, Pesee, Vente } from '../domain/types';
 import { Row } from './ui/Row';
 import { LockedLabel } from './ui/LockedValue';
 
-export function AchatTicketCard({ t, planteur }: { t: Pesee; planteur: Planteur | undefined }) {
+export function AchatTicketCard({ t, planteur }: { t: Pesee; planteur: Partenaire | undefined }) {
   return (
     <View style={[styles.card, { borderColor: `${colors.accent}55` }]}>
       <View style={styles.header}>

@@ -2,7 +2,14 @@ import { useSQLiteContext } from 'expo-sqlite';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
-import { createPlanteur, deletePlanteur as deletePlanteurRepo, listPlanteurs, tonnageParPlanteur, type PlanteurTonnage } from '../db/repositories/planteurs';
+import {
+  createPartenaire,
+  deletePartenaire as deletePartenaireRepo,
+  listPartenaires,
+  tonnageParPlanteur,
+  type CreatePartenaireInput,
+  type PlanteurTonnage,
+} from '../db/repositories/partenaires';
 import {
   annulerPesee as annulerPeseeRepo,
   createPesee,
@@ -26,6 +33,7 @@ import {
   enregistrerPaiementVente,
   enregistrerDepense as enregistrerDepenseRepo,
   enregistrerPaiementPesee,
+  enregistrerReglement as enregistrerReglementRepo,
   annulerPaiementVente,
   annulerPaiementPesee,
   ensureCaisseForUser,
@@ -39,14 +47,14 @@ import {
   soldeCaisse,
 } from '../db/repositories/caisses';
 import { listUsers } from '../db/repositories/users';
-import type { Caisse, MouvementCaisse, Pesee, Planteur, Vente } from '../domain/types';
+import type { Caisse, MouvementCaisse, Partenaire, Pesee, Vente } from '../domain/types';
 import { supabase } from '../lib/supabase';
 import { pullAll } from '../sync/pull';
 import {
   pushCaisse,
   pushDeleteMouvementForPesee,
   pushDeleteMouvementForVente,
-  pushDeletePlanteur,
+  pushDeletePartenaire,
   pushMouvement,
   pushMouvementStatus,
   pushPayeRegimeStatus,
@@ -54,7 +62,7 @@ import {
   pushPayeHuileStatus,
   pushPayeTransportVenteStatus,
   pushPesee,
-  pushPlanteur,
+  pushPartenaire,
   pushSetting,
   pushUser,
   pushVente,
@@ -62,7 +70,7 @@ import {
 import { subscribeRealtime } from '../sync/realtime';
 
 interface DataContextValue {
-  planteurs: Planteur[];
+  partenaires: Partenaire[];
   pesees: Pesee[];
   ventes: Vente[];
   caisses: Caisse[];
@@ -73,10 +81,10 @@ interface DataContextValue {
   prixTransportRegime: string;
   loading: boolean;
   refresh: () => Promise<void>;
-  addPlanteur: (input: { nom: string; village: string; tel: string }) => Promise<Planteur>;
-  supprimerPlanteur: (id: string) => Promise<void>;
-  enregistrerPesee: (input: Omit<CreatePeseeInput, 'userId' | 'userNom'>) => Promise<Pesee>;
-  enregistrerVente: (input: Omit<CreateVenteInput, 'userId' | 'userNom'>) => Promise<Vente>;
+  addPartenaire: (input: CreatePartenaireInput) => Promise<Partenaire>;
+  supprimerPartenaire: (id: string) => Promise<void>;
+  enregistrerPesee: (input: Omit<CreatePeseeInput, 'userId' | 'userNom' | 'chauffeurNom'>) => Promise<Pesee>;
+  enregistrerVente: (input: Omit<CreateVenteInput, 'userId' | 'userNom' | 'chauffeurNom'>) => Promise<Vente>;
   togglePayeRegime: (id: string, paye: boolean) => Promise<void>;
   togglePayeTransportRegime: (id: string, paye: boolean) => Promise<void>;
   togglePayeVenteHuile: (id: string, paye: boolean, caisseId?: string) => Promise<void>;
@@ -92,6 +100,13 @@ interface DataContextValue {
   enregistrerDepense: (caisseId: string, montant: number, motif: string) => Promise<void>;
   initierRetour: (caisseId: string, montant: number, motif: string) => Promise<void>;
   initierTransfert: (fromCaisseId: string, toCaisseId: string, montant: number, motif: string) => Promise<void>;
+  enregistrerReglement: (input: {
+    partenaireId: string;
+    volet: 'produit' | 'transport';
+    montant: number;
+    caisseId: string;
+    motif: string;
+  }) => Promise<void>;
   validerMouvement: (id: string) => Promise<void>;
   rejeterMouvement: (id: string) => Promise<void>;
 }
@@ -101,7 +116,7 @@ const DataContext = createContext<DataContextValue | undefined>(undefined);
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const db = useSQLiteContext();
   const { currentUser } = useAuth();
-  const [planteurs, setPlanteurs] = useState<Planteur[]>([]);
+  const [partenaires, setPartenaires] = useState<Partenaire[]>([]);
   const [pesees, setPesees] = useState<Pesee[]>([]);
   const [ventes, setVentes] = useState<Vente[]>([]);
   const [caisses, setCaisses] = useState<Caisse[]>([]);
@@ -114,7 +129,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     const [p, a, v, t, pk, pl, ptr, c, m] = await Promise.all([
-      listPlanteurs(db),
+      listPartenaires(db),
       listPesees(db),
       listVentes(db),
       tonnageParPlanteur(db),
@@ -124,7 +139,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       listCaisses(db),
       listMouvements(db),
     ]);
-    setPlanteurs(p);
+    setPartenaires(p);
     setPesees(a);
     setVentes(v);
     setTonnage(t);
@@ -190,16 +205,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // le gestionnaire d'événements Realtime ci-dessous — seulement au démarrage, à la
     // connexion, et à intervalle régulier.
     async function pushPending() {
-      const [localCaisses, localPlanteurs, localPesees, localVentes, localUsers] = await Promise.all([
+      const [localCaisses, localPartenaires, localPesees, localVentes, localUsers] = await Promise.all([
         listCaisses(db),
-        listPlanteurs(db),
+        listPartenaires(db),
         listPesees(db),
         listVentes(db),
         listUsers(db),
       ]);
       await Promise.all([
         ...localCaisses.map((c) => pushCaisse(c).catch(() => {})),
-        ...localPlanteurs.map((p) => pushPlanteur(p).catch(() => {})),
+        ...localPartenaires.map((p) => pushPartenaire(p).catch(() => {})),
         ...localPesees.map((t) => pushPesee(t).catch(() => {})),
         ...localVentes.map((v) => pushVente(v).catch(() => {})),
         ...localUsers.map((u) => pushUser(u).catch(() => {})),
@@ -261,42 +276,45 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [db]);
 
-  const addPlanteur = useCallback(
-    async (input: { nom: string; village: string; tel: string }) => {
-      const p = await createPlanteur(db, input);
+  const addPartenaire = useCallback(
+    async (input: CreatePartenaireInput) => {
+      const p = await createPartenaire(db, input);
       await refresh();
-      pushPlanteur(p).catch(() => {});
+      pushPartenaire(p).catch(() => {});
       return p;
     },
     [db, refresh]
   );
 
-  const supprimerPlanteur = useCallback(
+  const supprimerPartenaire = useCallback(
     async (id: string) => {
-      await deletePlanteurRepo(db, id);
+      await deletePartenaireRepo(db, id);
       await refresh();
-      const r = await pushDeletePlanteur(id).catch((err) => ({ ok: false, error: String(err) }));
+      const r = await pushDeletePartenaire(id).catch((err) => ({ ok: false, error: String(err) }));
       if (!r.ok) {
-        Alert.alert('Synchro cloud échouée (suppression planteur)', r.error ?? 'Erreur inconnue');
+        Alert.alert('Synchro cloud échouée (suppression partenaire)', r.error ?? 'Erreur inconnue');
       }
     },
     [db, refresh]
   );
 
   const enregistrerPesee = useCallback(
-    async (input: Omit<CreatePeseeInput, 'userId' | 'userNom'>) => {
+    async (input: Omit<CreatePeseeInput, 'userId' | 'userNom' | 'chauffeurNom'>) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
-      const t = await createPesee(db, { ...input, userId: currentUser.id, userNom: currentUser.nom });
+      const chauffeurNom = partenaires.find((p) => p.id === input.chauffeurId)?.nom ?? '';
+      const t = await createPesee(db, { ...input, chauffeurNom, userId: currentUser.id, userNom: currentUser.nom });
       await refresh();
-      // Pousse d'abord le planteur référencé (au cas où il ne l'aurait jamais été,
-      // ex: planteurs de démo créés au premier lancement) : sinon la pesée viole la
-      // clé étrangère côté Supabase et échoue silencieusement.
-      const planteur = planteurs.find((p) => p.id === input.planteurId);
+      // Pousse d'abord le planteur et le chauffeur référencés (au cas où l'un des deux
+      // ne l'aurait jamais été, ex: partenaires de démo créés au premier lancement) :
+      // sinon la pesée viole une clé étrangère côté Supabase et échoue silencieusement.
+      const planteur = partenaires.find((p) => p.id === input.planteurId);
+      const chauffeur = partenaires.find((p) => p.id === input.chauffeurId);
       (async () => {
-        if (planteur) {
-          const rp = await pushPlanteur(planteur).catch((err) => ({ ok: false, error: String(err) }));
+        for (const partenaire of [planteur, chauffeur]) {
+          if (!partenaire) continue;
+          const rp = await pushPartenaire(partenaire).catch((err) => ({ ok: false, error: String(err) }));
           if (!rp.ok) {
-            Alert.alert('Synchro cloud échouée (planteur)', rp.error ?? 'Erreur inconnue');
+            Alert.alert('Synchro cloud échouée (partenaire)', rp.error ?? 'Erreur inconnue');
             return;
           }
         }
@@ -307,22 +325,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       })();
       return t;
     },
-    [db, refresh, currentUser, planteurs]
+    [db, refresh, currentUser, partenaires]
   );
 
   const enregistrerVente = useCallback(
-    async (input: Omit<CreateVenteInput, 'userId' | 'userNom'>) => {
+    async (input: Omit<CreateVenteInput, 'userId' | 'userNom' | 'chauffeurNom'>) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
-      const t = await createVente(db, { ...input, userId: currentUser.id, userNom: currentUser.nom });
+      const chauffeurNom = partenaires.find((p) => p.id === input.chauffeurId)?.nom ?? '';
+      const t = await createVente(db, { ...input, chauffeurNom, userId: currentUser.id, userNom: currentUser.nom });
       await refresh();
-      pushVente(t)
-        .then((r) => {
-          if (!r.ok) Alert.alert('Synchro cloud échouée (vente)', r.error ?? 'Erreur inconnue');
-        })
-        .catch(() => {});
+      const chauffeur = partenaires.find((p) => p.id === input.chauffeurId);
+      (async () => {
+        if (chauffeur) {
+          const rp = await pushPartenaire(chauffeur).catch((err) => ({ ok: false, error: String(err) }));
+          if (!rp.ok) {
+            Alert.alert('Synchro cloud échouée (partenaire)', rp.error ?? 'Erreur inconnue');
+            return;
+          }
+        }
+        const rt = await pushVente(t).catch((err) => ({ ok: false, error: String(err) }));
+        if (!rt.ok) Alert.alert('Synchro cloud échouée (vente)', rt.error ?? 'Erreur inconnue');
+      })();
       return t;
     },
-    [db, refresh, currentUser]
+    [db, refresh, currentUser, partenaires]
   );
 
   const togglePayeRegime = useCallback(
@@ -570,6 +596,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [db, refresh, currentUser]
   );
 
+  const enregistrerReglement = useCallback(
+    async (input: { partenaireId: string; volet: 'produit' | 'transport'; montant: number; caisseId: string; motif: string }) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      const m = await enregistrerReglementRepo(db, {
+        caisseId: input.caisseId,
+        partenaireId: input.partenaireId,
+        volet: input.volet,
+        montant: input.montant,
+        motif: input.motif,
+        actor: { userId: currentUser.id, userNom: currentUser.nom },
+      });
+      await refresh();
+      pushMouvement(m).catch(() => {});
+    },
+    [db, refresh, currentUser]
+  );
+
   const validerMouvement = useCallback(
     async (id: string) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
@@ -594,7 +637,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<DataContextValue>(
     () => ({
-      planteurs,
+      partenaires,
       pesees,
       ventes,
       caisses,
@@ -605,8 +648,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       prixTransportRegime,
       loading,
       refresh,
-      addPlanteur,
-      supprimerPlanteur,
+      addPartenaire,
+      supprimerPartenaire,
       enregistrerPesee,
       enregistrerVente,
       togglePayeRegime,
@@ -624,11 +667,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       enregistrerDepense,
       initierRetour,
       initierTransfert,
+      enregistrerReglement,
       validerMouvement,
       rejeterMouvement,
     }),
     [
-      planteurs,
+      partenaires,
       pesees,
       ventes,
       caisses,
@@ -639,8 +683,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       prixTransportRegime,
       loading,
       refresh,
-      addPlanteur,
-      supprimerPlanteur,
+      addPartenaire,
+      supprimerPartenaire,
       enregistrerPesee,
       enregistrerVente,
       togglePayeRegime,
@@ -658,6 +702,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       enregistrerDepense,
       initierRetour,
       initierTransfert,
+      enregistrerReglement,
       validerMouvement,
       rejeterMouvement,
     ]

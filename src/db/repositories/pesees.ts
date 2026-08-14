@@ -9,6 +9,7 @@ interface PeseeRow {
   num_ticket: string;
   planteur_id: string;
   chauffeur: string;
+  chauffeur_id: string | null;
   type_vehicule: string;
   immatriculation: string;
   origine: string;
@@ -35,6 +36,7 @@ function toPesee(row: PeseeRow): Pesee {
     numTicketPesee: row.num_ticket,
     planteurId: row.planteur_id,
     chauffeur: row.chauffeur,
+    chauffeurId: row.chauffeur_id,
     typeVehicule: row.type_vehicule,
     immatriculation: row.immatriculation,
     origine: row.origine,
@@ -63,7 +65,8 @@ export async function listPesees(db: SQLiteDatabase): Promise<Pesee[]> {
 export interface CreatePeseeInput {
   numTicketPesee: string;
   planteurId: string;
-  chauffeur: string;
+  chauffeurId: string;
+  chauffeurNom: string;
   typeVehicule: string;
   immatriculation: string;
   origine: string;
@@ -85,13 +88,14 @@ export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): 
   const num = (countRow?.count ?? 0) + 1;
 
   await db.runAsync(
-    `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, type_vehicule, immatriculation, origine, poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye_regime, paye_transport, ts, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+    `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, chauffeur_id, type_vehicule, immatriculation, origine, poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye_regime, paye_transport, ts, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
     id,
     num,
     input.numTicketPesee.trim(),
     input.planteurId,
-    input.chauffeur.trim(),
+    input.chauffeurNom.trim(),
+    input.chauffeurId,
     input.typeVehicule,
     input.immatriculation.trim(),
     input.origine.trim() || '—',
@@ -120,7 +124,8 @@ export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): 
     num,
     numTicketPesee: input.numTicketPesee.trim(),
     planteurId: input.planteurId,
-    chauffeur: input.chauffeur.trim(),
+    chauffeur: input.chauffeurNom.trim(),
+    chauffeurId: input.chauffeurId,
     typeVehicule: input.typeVehicule,
     immatriculation: input.immatriculation.trim(),
     origine: input.origine.trim() || '—',

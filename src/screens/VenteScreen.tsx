@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { VenteTicketCard } from '../components/TicketCard';
+import { PartenairePicker } from '../components/PartenairePicker';
 import { Button } from '../components/ui/Button';
 import { ScaleInput } from '../components/ui/ScaleInput';
 import { SectionTitle } from '../components/ui/SectionTitle';
@@ -17,11 +18,12 @@ import { fonts } from '../theme/typography';
 
 export function VenteScreen() {
   const { isManager, isElevated } = useAuth();
-  const { enregistrerVente, prixLitre, setPrixLitre } = useAppData();
+  const { partenaires, enregistrerVente, prixLitre, setPrixLitre } = useAppData();
+  const chauffeurs = useMemo(() => partenaires.filter((p) => p.type === 'chauffeur'), [partenaires]);
 
   const [client, setClient] = useState('');
   const [numTicketPesee, setNumTicketPesee] = useState('');
-  const [chauffeur, setChauffeur] = useState('');
+  const [selectedChauffeur, setSelectedChauffeur] = useState('');
   const [typeVehicule, setTypeVehicule] = useState<VehiculeHuile>(VEHICULES_HUILE[0]);
   const [immatriculation, setImmatriculation] = useState('');
   const [poidsCharge, setPoidsCharge] = useState('');
@@ -43,7 +45,7 @@ export function VenteScreen() {
   const prixRevient = netVente > 0 ? prixNum - montantTransport / netVente : prixNum;
 
   const canSubmit =
-    !!client.trim() && netVente > 0 && !!chauffeur.trim() && !!immatriculation.trim() && !!numTicketPesee.trim();
+    !!client.trim() && netVente > 0 && !!selectedChauffeur && !!immatriculation.trim() && !!numTicketPesee.trim();
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -54,7 +56,7 @@ export function VenteScreen() {
       const ticket = await enregistrerVente({
         numTicketPesee,
         client,
-        chauffeur,
+        chauffeurId: selectedChauffeur,
         typeVehicule,
         immatriculation,
         poidsCharge: parseFloat(poidsCharge),
@@ -65,7 +67,6 @@ export function VenteScreen() {
       setLastVente(ticket);
       setClient('');
       setNumTicketPesee('');
-      setChauffeur('');
       setImmatriculation('');
       setPoidsCharge('');
       setPoidsVide('');
@@ -85,7 +86,14 @@ export function VenteScreen() {
 
       <View style={styles.grid2}>
         <View style={{ flex: 1 }}>
-          <TextField label="Chauffeur" value={chauffeur} onChangeText={setChauffeur} placeholder="Nom du chauffeur" />
+          <PartenairePicker
+            label="Chauffeur"
+            placeholder="Aucun chauffeur — ajoutez-en un dans Partenaires"
+            partenaires={chauffeurs}
+            selectedId={selectedChauffeur}
+            onSelect={setSelectedChauffeur}
+            metaLine={(p) => p.tel}
+          />
         </View>
         <View style={{ flex: 1 }}>
           <TextField label="Immatriculation" value={immatriculation} onChangeText={setImmatriculation} placeholder="CI-4521-AB" />

@@ -1,4 +1,6 @@
+import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
@@ -6,7 +8,8 @@ import { BarChart } from '../components/BarChart';
 import { useAppData } from '../data/DataContext';
 import { listUsers } from '../db/repositories/users';
 import { buildBuckets, formatFCFA, formatTonnes, PERIODE_LABELS, periodKey } from '../domain/format';
-import type { Metrique, Periode, User } from '../domain/types';
+import { statsPartenaire, type PartenaireStats } from '../domain/partenaires';
+import type { Metrique, Partenaire, PartenaireType, Periode, User } from '../domain/types';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -85,7 +88,7 @@ function SyntheseAgentContent() {
 }
 
 function SyntheseContent() {
-  const { pesees, ventes, planteurs } = useAppData();
+  const { pesees, ventes, mouvements, partenaires } = useAppData();
   const db = useSQLiteContext();
   const [users, setUsers] = useState<User[]>([]);
   const [periode, setPeriode] = useState<Periode>('jour');
@@ -113,31 +116,19 @@ function SyntheseContent() {
     return Array.from(map.values()).sort((a, b) => b.poids - a.poids);
   }, [periodePesees, users]);
 
-  const parPlanteur = useMemo(() => {
-    const map = new Map<string, { nom: string; poids: number; count: number }>();
-    for (const p of periodePesees) {
-      const nom = planteurs.find((pl) => pl.id === p.planteurId)?.nom ?? 'Inconnu';
-      const cur = map.get(p.planteurId) ?? { nom, poids: 0, count: 0 };
-      cur.poids += p.net;
-      cur.count += 1;
-      map.set(p.planteurId, cur);
-    }
-    return Array.from(map.values()).sort((a, b) => b.poids - a.poids);
-  }, [periodePesees, planteurs]);
+  const filtre = useMemo(() => ({ periode, key: periodKey(new Date(), periode) }), [periode]);
 
-  const parChauffeur = useMemo(() => {
-    const map = new Map<string, { poids: number; count: number }>();
-    for (const p of periodePesees) {
-      const key = p.chauffeur || '—';
-      const cur = map.get(key) ?? { poids: 0, count: 0 };
-      cur.poids += p.net;
-      cur.count += 1;
-      map.set(key, cur);
-    }
-    return Array.from(map.entries())
-      .map(([chauffeur, v]) => ({ chauffeur, ...v }))
-      .sort((a, b) => b.poids - a.poids);
-  }, [periodePesees]);
+  function parType(type: PartenaireType): { partenaire: Partenaire; stats: PartenaireStats }[] {
+    return partenaires
+      .filter((p) => p.type === type)
+      .map((p) => ({ partenaire: p, stats: statsPartenaire(p, pesees, ventes, mouvements, filtre) }))
+      .filter((r) => r.stats.livraisons > 0)
+      .sort((a, b) => b.stats.tonnage - a.stats.tonnage);
+  }
+
+  const parPlanteur = useMemo(() => parType('planteur'), [partenaires, pesees, ventes, mouvements, filtre]);
+  const parPont = useMemo(() => parType('pont_independant'), [partenaires, pesees, ventes, mouvements, filtre]);
+  const parChauffeur = useMemo(() => parType('chauffeur'), [partenaires, pesees, ventes, mouvements, filtre]);
 
   const chartData = useMemo(() => {
     const buckets = buildBuckets(periode);
@@ -240,15 +231,9 @@ function SyntheseContent() {
         rows={parAgent.map((r) => ({ label: r.nom, poids: r.poids, sub: `${formatFCFA(r.montant)} · ${r.count} pesée${r.count > 1 ? 's' : ''}` }))}
       />
 
-      <BreakdownCard
-        title={`Achats par planteur — ${PERIODE_LABELS[periode]}`}
-        rows={parPlanteur.map((r) => ({ label: r.nom, poids: r.poids, sub: `${r.count} pesée${r.count > 1 ? 's' : ''}` }))}
-      />
-
-      <BreakdownCard
-        title={`Achats par chauffeur — ${PERIODE_LABELS[periode]}`}
-        rows={parChauffeur.map((r) => ({ label: r.chauffeur, poids: r.poids, sub: `${r.count} pesée${r.count > 1 ? 's' : ''}` }))}
-      />
+      <PartenaireBreakdownCard title={`Planteurs — ${PERIODE_LABELS[periode]}`} rows={parPlanteur} />
+      <PartenaireBreakdownCard title={`Ponts indépendants — ${PERIODE_LABELS[periode]}`} rows={parPont} />
+      <PartenaireBreakdownCard title={`Chauffeurs — ${PERIODE_LABELS[periode]}`} rows={parChauffeur} />
     </ScrollView>
   );
 }
@@ -276,9 +261,66 @@ function BreakdownCard({ title, rows }: { title: string; rows: { label: string; 
   );
 }
 
+// Liste dépliable (planteurs / ponts indépendants / chauffeurs) : nom, tonnage,
+// montant reçu et solde (impayé/créance) pour la période choisie. Chaque ligne mène
+// à la fiche complète du partenaire (toutes périodes).
+function PartenaireBreakdownCard({ title, rows }: { title: string; rows: { partenaire: Partenaire; stats: PartenaireStats }[] }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <View>
+      <Pressable style={styles.breakdownHeader} onPress={() => setOpen((o) => !o)}>
+        <Text style={styles.label}>
+          {title} ({rows.length})
+        </Text>
+        {open ? <ChevronUp size={16} color={colors.textMuted} /> : <ChevronDown size={16} color={colors.textMuted} />}
+      </Pressable>
+      {open && (
+        <View style={styles.breakdownCard}>
+          {rows.length === 0 ? (
+            <Text style={styles.empty}>Aucune activité sur cette période</Text>
+          ) : (
+            rows.map((row, i) => (
+              <Pressable
+                key={row.partenaire.id}
+                onPress={() => router.push(`/partenaire/${row.partenaire.id}`)}
+                style={[styles.breakdownRow, i === rows.length - 1 && { borderBottomWidth: 0 }]}
+              >
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={styles.breakdownName}>{row.partenaire.nom}</Text>
+                  <Text style={styles.breakdownSub}>
+                    {formatTonnes(row.stats.tonnage)} · {row.stats.livraisons} livraison{row.stats.livraisons > 1 ? 's' : ''}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.breakdownValue}>{formatFCFA(row.stats.montantPaye)} reçu</Text>
+                  <Text
+                    style={[
+                      styles.breakdownSub,
+                      { color: row.stats.solde > 0 ? colors.accent : row.stats.solde < 0 ? colors.frond : colors.textFaint },
+                    ]}
+                  >
+                    {row.stats.solde > 0
+                      ? `${formatFCFA(row.stats.solde)} impayé`
+                      : row.stats.solde < 0
+                        ? `${formatFCFA(-row.stats.solde)} créance`
+                        : 'Soldé'}
+                  </Text>
+                </View>
+              </Pressable>
+            ))
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: 20, gap: 20, paddingBottom: 60 },
+  breakdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: {
     fontFamily: fonts.mono,
     fontSize: 11,
