@@ -188,22 +188,46 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     let unsubscribeRealtime: (() => void) | undefined;
 
-    // Repousse systématiquement tout ce qui existe localement — upsert idempotent,
-    // sans risque à répéter. Rattrape à la fois les entités jamais explicitement
-    // "créées" par l'utilisateur (caisses/planteurs de démo depuis seedIfEmpty) et
-    // toute pesée/vente restée bloquée après un échec d'envoi passé (panne réseau,
-    // contrainte serveur temporairement invalide...) qui n'aurait jamais été
-    // réessayée autrement. La repousse des comptes (pushUser) n'aboutit que depuis
-    // une session gérant (RLS) — depuis un autre rôle, elle échoue silencieusement
-    // sans conséquence : seul le gérant fait autorité sur les comptes.
-    // IMPORTANT : un upsert déclenche un événement Realtime même quand la valeur
-    // envoyée est identique à celle déjà en base (c'est une commande UPDATE, peu
-    // importe si elle change quelque chose) — appeler cette fonction à chaque
-    // événement Realtime créerait donc une boucle infinie (chaque repousse
-    // déclenchant l'événement qui déclenche la repousse suivante), provoquant un
-    // clignotement continu de l'affichage. Elle ne doit donc JAMAIS être appelée par
-    // le gestionnaire d'événements Realtime ci-dessous — seulement au démarrage, à la
-    // connexion, et à intervalle régulier.
+    // Rattrape les entités jamais explicitement "créées" par l'utilisateur (caisses/
+    // partenaires de démo depuis seedIfEmpty) et toute pesée/vente restée bloquée
+    // après un échec d'envoi passé (panne réseau, contrainte serveur temporairement
+    // invalide...) qui n'aurait jamais été réessayée autrement. La repousse des
+    // comptes (pushUser) n'aboutit que depuis une session gérant (RLS) — depuis un
+    // autre rôle, elle échoue silencieusement sans conséquence : seul le gérant fait
+    // autorité sur les comptes.
+    // IMPORTANT : ne repousse QUE les lignes absentes de Supabase (jamais encore
+    // synchronisées) — jamais une ligne qui y existe déjà. pushPesee/pushVente font
+    // un upsert de la ligne ENTIÈRE (dernier écrivain gagne) : si cet appareil n'a
+    // pas encore tiré un changement fait ailleurs (ex: une pesée marquée payée sur le
+    // téléphone du gérant), sa copie locale est en retard sur ce champ précis —
+    // repousser quand même sa version entière effacerait ce changement distant plus
+    // récent, qui ne reviendrait qu'au prochain tirage, en apparence "annulé après
+    // quelques minutes" (le statut payé notamment). Les changements sur une ligne
+    // déjà connue de Supabase passent par des mises à jour ciblées ailleurs dans ce
+    // fichier (pushPayeRegimeStatus, pushMouvementStatus...), jamais par ici.
+    // Un upsert déclenche un événement Realtime même quand la valeur envoyée est
+    // identique à celle déjà en base (c'est une commande UPDATE, peu importe si ça
+    // change quelque chose) — appeler cette fonction à chaque événement Realtime
+    // créerait donc une boucle infinie (chaque repousse déclenchant l'événement qui
+    // déclenche la repousse suivante), provoquant un clignotement continu de
+    // l'affichage. Elle ne doit donc JAMAIS être appelée par le gestionnaire
+    // d'événements Realtime ci-dessous — seulement au démarrage, à la connexion, et à
+    // intervalle régulier.
+    async function fetchRemoteIds(table: string): Promise<Set<string> | null> {
+      if (!supabase) return null;
+      const { data, error } = await supabase.from(table).select('id');
+      if (error || !data) return null;
+      return new Set(data.map((r: { id: string }) => r.id));
+    }
+
+    function jamaisEncoreSynchronises<T extends { id: string }>(locaux: T[], idsDistants: Set<string> | null): T[] {
+      // idsDistants null = le tirage a échoué (hors-ligne ?) : par prudence, ne rien
+      // repousser plutôt que de risquer d'écraser un changement distant qu'on n'a pas
+      // pu vérifier.
+      if (!idsDistants) return [];
+      return locaux.filter((x) => !idsDistants.has(x.id));
+    }
+
     async function pushPending() {
       const [localCaisses, localPartenaires, localPesees, localVentes, localUsers] = await Promise.all([
         listCaisses(db),
@@ -212,12 +236,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         listVentes(db),
         listUsers(db),
       ]);
+      const [remoteCaisseIds, remotePartenaireIds, remotePeseeIds, remoteVenteIds, remoteUserIds] = await Promise.all([
+        fetchRemoteIds('caisses'),
+        fetchRemoteIds('planteurs'),
+        fetchRemoteIds('pesees'),
+        fetchRemoteIds('ventes'),
+        fetchRemoteIds('local_accounts'),
+      ]);
       await Promise.all([
-        ...localCaisses.map((c) => pushCaisse(c).catch(() => {})),
-        ...localPartenaires.map((p) => pushPartenaire(p).catch(() => {})),
-        ...localPesees.map((t) => pushPesee(t).catch(() => {})),
-        ...localVentes.map((v) => pushVente(v).catch(() => {})),
-        ...localUsers.map((u) => pushUser(u).catch(() => {})),
+        ...jamaisEncoreSynchronises(localCaisses, remoteCaisseIds).map((c) => pushCaisse(c).catch(() => {})),
+        ...jamaisEncoreSynchronises(localPartenaires, remotePartenaireIds).map((p) => pushPartenaire(p).catch(() => {})),
+        ...jamaisEncoreSynchronises(localPesees, remotePeseeIds).map((t) => pushPesee(t).catch(() => {})),
+        ...jamaisEncoreSynchronises(localVentes, remoteVenteIds).map((v) => pushVente(v).catch(() => {})),
+        ...jamaisEncoreSynchronises(localUsers, remoteUserIds).map((u) => pushUser(u).catch(() => {})),
       ]);
     }
 
