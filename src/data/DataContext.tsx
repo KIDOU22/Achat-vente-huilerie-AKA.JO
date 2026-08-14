@@ -7,25 +7,27 @@ import {
   annulerPesee as annulerPeseeRepo,
   createPesee,
   listPesees,
-  togglePaye as togglePayeRepo,
+  togglePayeRegime as togglePayeRegimeRepo,
+  togglePayeTransportRegime as togglePayeTransportRegimeRepo,
   type CreatePeseeInput,
 } from '../db/repositories/pesees';
 import {
   annulerVente as annulerVenteRepo,
   createVente,
   listVentes,
-  togglePayeVente as togglePayeVenteRepo,
+  togglePayeHuile as togglePayeHuileRepo,
+  togglePayeTransportVente as togglePayeTransportVenteRepo,
   type CreateVenteInput,
 } from '../db/repositories/ventes';
 import { getSetting, setSetting } from '../db/repositories/settings';
 import {
   allouer as allouerRepo,
   enregistrerApport as enregistrerApportRepo,
-  enregistrerCreditVente,
+  enregistrerPaiementVente,
   enregistrerDepense as enregistrerDepenseRepo,
-  enregistrerDepensePesee,
-  annulerCreditVente,
-  annulerDepensePesee,
+  enregistrerPaiementPesee,
+  annulerPaiementVente,
+  annulerPaiementPesee,
   ensureCaisseForUser,
   ensureSingletonCaisses,
   initierRetour as initierRetourRepo,
@@ -47,8 +49,10 @@ import {
   pushDeletePlanteur,
   pushMouvement,
   pushMouvementStatus,
-  pushPayeStatus,
-  pushPayeStatusVente,
+  pushPayeRegimeStatus,
+  pushPayeTransportPeseeStatus,
+  pushPayeHuileStatus,
+  pushPayeTransportVenteStatus,
   pushPesee,
   pushPlanteur,
   pushSetting,
@@ -73,8 +77,10 @@ interface DataContextValue {
   supprimerPlanteur: (id: string) => Promise<void>;
   enregistrerPesee: (input: Omit<CreatePeseeInput, 'userId' | 'userNom'>) => Promise<Pesee>;
   enregistrerVente: (input: Omit<CreateVenteInput, 'userId' | 'userNom'>) => Promise<Vente>;
-  togglePaye: (id: string, paye: boolean) => Promise<void>;
-  togglePayeVente: (id: string, paye: boolean, caisseId?: string) => Promise<void>;
+  togglePayeRegime: (id: string, paye: boolean) => Promise<void>;
+  togglePayeTransportRegime: (id: string, paye: boolean) => Promise<void>;
+  togglePayeVenteHuile: (id: string, paye: boolean, caisseId?: string) => Promise<void>;
+  togglePayeVenteTransport: (id: string, paye: boolean, caisseId?: string) => Promise<void>;
   annulerPesee: (id: string, motif: string) => Promise<void>;
   annulerVente: (id: string, motif: string) => Promise<void>;
   setPrixKg: (value: string) => Promise<void>;
@@ -319,65 +325,127 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [db, refresh, currentUser]
   );
 
-  const togglePaye = useCallback(
+  const togglePayeRegime = useCallback(
     async (id: string, paye: boolean) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
-      await togglePayeRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
-      // Une pesée payée débite automatiquement la caisse de l'agent qui l'a réglée ;
-      // repasser à "impayée" annule cette dépense automatique.
+      await togglePayeRegimeRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
+      // Le volet "régime" payé débite automatiquement la caisse de l'agent qui l'a
+      // réglé — indépendamment du transport, qui peut être payé à un autre moment.
       const pesee = pesees.find((p) => p.id === id);
       const caisse = pesee ? caisses.find((c) => c.userId === pesee.createdBy) : undefined;
       if (pesee && caisse) {
         if (paye) {
-          const mouvement = await enregistrerDepensePesee(db, {
+          const mouvement = await enregistrerPaiementPesee(db, {
             caisseId: caisse.id,
             peseeId: id,
-            // Le paiement couvre le régime ET le transport — les deux sortent de la
-            // même caisse au moment où la pesée est marquée payée.
-            montant: pesee.montant + pesee.montantTransport,
+            volet: 'produit',
+            montant: pesee.montant,
             actor: { userId: currentUser.id, userNom: currentUser.nom },
           });
           if (mouvement) pushMouvement(mouvement).catch(() => {});
         } else {
-          await annulerDepensePesee(db, id);
-          pushDeleteMouvementForPesee(id).catch(() => {});
+          await annulerPaiementPesee(db, id, 'produit');
+          pushDeleteMouvementForPesee(id, 'produit').catch(() => {});
         }
       }
       await refresh();
-      const r = await pushPayeStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
+      const r = await pushPayeRegimeStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
       if (!r.ok) {
-        Alert.alert('Synchro cloud échouée (statut paiement)', r.error ?? 'Erreur inconnue');
+        Alert.alert('Synchro cloud échouée (statut paiement régime)', r.error ?? 'Erreur inconnue');
       }
     },
     [db, refresh, currentUser, pesees, caisses]
   );
 
-  const togglePayeVente = useCallback(
+  const togglePayeTransportRegime = useCallback(
+    async (id: string, paye: boolean) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      await togglePayeTransportRegimeRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
+      const pesee = pesees.find((p) => p.id === id);
+      const caisse = pesee ? caisses.find((c) => c.userId === pesee.createdBy) : undefined;
+      if (pesee && caisse) {
+        if (paye) {
+          const mouvement = await enregistrerPaiementPesee(db, {
+            caisseId: caisse.id,
+            peseeId: id,
+            volet: 'transport',
+            montant: pesee.montantTransport,
+            actor: { userId: currentUser.id, userNom: currentUser.nom },
+          });
+          if (mouvement) pushMouvement(mouvement).catch(() => {});
+        } else {
+          await annulerPaiementPesee(db, id, 'transport');
+          pushDeleteMouvementForPesee(id, 'transport').catch(() => {});
+        }
+      }
+      await refresh();
+      const r = await pushPayeTransportPeseeStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (statut paiement transport)', r.error ?? 'Erreur inconnue');
+      }
+    },
+    [db, refresh, currentUser, pesees, caisses]
+  );
+
+  const togglePayeVenteHuile = useCallback(
     async (id: string, paye: boolean, caisseId?: string) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
-      await togglePayeVenteRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
-      // Une vente payée crédite la caisse choisie par le vendeur (principale ou
-      // banque) ; repasser à "impayée" annule ce crédit automatique.
+      await togglePayeHuileRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
+      // Le volet "huile" payé crédite la caisse choisie par le vendeur (recette) ;
+      // indépendant du transport, qui est une dépense (voir togglePayeVenteTransport).
       const vente = ventes.find((v) => v.id === id);
       if (paye) {
         if (!caisseId) throw new Error('Caisse destinataire requise');
         if (vente) {
-          const mouvement = await enregistrerCreditVente(db, {
+          const mouvement = await enregistrerPaiementVente(db, {
             caisseId,
             venteId: id,
+            volet: 'produit',
             montant: vente.montant,
             actor: { userId: currentUser.id, userNom: currentUser.nom },
           });
           if (mouvement) pushMouvement(mouvement).catch(() => {});
         }
       } else {
-        await annulerCreditVente(db, id);
-        pushDeleteMouvementForVente(id).catch(() => {});
+        await annulerPaiementVente(db, id, 'produit');
+        pushDeleteMouvementForVente(id, 'produit').catch(() => {});
       }
       await refresh();
-      const r = await pushPayeStatusVente(id, paye).catch((err) => ({ ok: false, error: String(err) }));
+      const r = await pushPayeHuileStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
       if (!r.ok) {
-        Alert.alert('Synchro cloud échouée (statut paiement vente)', r.error ?? 'Erreur inconnue');
+        Alert.alert('Synchro cloud échouée (statut paiement huile)', r.error ?? 'Erreur inconnue');
+      }
+    },
+    [db, refresh, currentUser, ventes]
+  );
+
+  const togglePayeVenteTransport = useCallback(
+    async (id: string, paye: boolean, caisseId?: string) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      await togglePayeTransportVenteRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
+      // Le volet "transport" payé débite la caisse choisie (c'est une dépense — voir
+      // "prix de revient" dans l'écran Vente) ; indépendant du volet huile.
+      const vente = ventes.find((v) => v.id === id);
+      if (paye) {
+        if (!caisseId) throw new Error('Caisse à débiter requise');
+        if (vente) {
+          const mouvement = await enregistrerPaiementVente(db, {
+            caisseId,
+            venteId: id,
+            volet: 'transport',
+            montant: vente.montantTransport,
+            actor: { userId: currentUser.id, userNom: currentUser.nom },
+          });
+          if (mouvement) pushMouvement(mouvement).catch(() => {});
+        }
+      } else {
+        await annulerPaiementVente(db, id, 'transport');
+        pushDeleteMouvementForVente(id, 'transport').catch(() => {});
+      }
+      await refresh();
+      const r = await pushPayeTransportVenteStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (statut paiement transport)', r.error ?? 'Erreur inconnue');
       }
     },
     [db, refresh, currentUser, ventes]
@@ -387,10 +455,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async (id: string, motif: string) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
       await annulerPeseeRepo(db, id, motif, { userId: currentUser.id, userNom: currentUser.nom });
-      await annulerDepensePesee(db, id);
+      await annulerPaiementPesee(db, id, 'produit');
+      await annulerPaiementPesee(db, id, 'transport');
       const pesee = pesees.find((p) => p.id === id);
       await refresh();
-      pushDeleteMouvementForPesee(id).catch(() => {});
+      pushDeleteMouvementForPesee(id, 'produit').catch(() => {});
+      pushDeleteMouvementForPesee(id, 'transport').catch(() => {});
       if (pesee) {
         pushPesee({ ...pesee, annulee: true, annuleePar: currentUser.id, motifAnnulation: motif.trim() }).catch(() => {});
       }
@@ -402,10 +472,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async (id: string, motif: string) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
       await annulerVenteRepo(db, id, motif, { userId: currentUser.id, userNom: currentUser.nom });
-      await annulerCreditVente(db, id);
+      await annulerPaiementVente(db, id, 'produit');
+      await annulerPaiementVente(db, id, 'transport');
       const vente = ventes.find((v) => v.id === id);
       await refresh();
-      pushDeleteMouvementForVente(id).catch(() => {});
+      pushDeleteMouvementForVente(id, 'produit').catch(() => {});
+      pushDeleteMouvementForVente(id, 'transport').catch(() => {});
       if (vente) {
         pushVente({ ...vente, annulee: true, annuleePar: currentUser.id, motifAnnulation: motif.trim() }).catch(() => {});
       }
@@ -537,8 +609,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       supprimerPlanteur,
       enregistrerPesee,
       enregistrerVente,
-      togglePaye,
-      togglePayeVente,
+      togglePayeRegime,
+      togglePayeTransportRegime,
+      togglePayeVenteHuile,
+      togglePayeVenteTransport,
       annulerPesee,
       annulerVente,
       setPrixKg,
@@ -569,8 +643,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       supprimerPlanteur,
       enregistrerPesee,
       enregistrerVente,
-      togglePaye,
-      togglePayeVente,
+      togglePayeRegime,
+      togglePayeTransportRegime,
+      togglePayeVenteHuile,
+      togglePayeVenteTransport,
       annulerPesee,
       annulerVente,
       setPrixKg,

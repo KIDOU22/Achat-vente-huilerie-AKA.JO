@@ -19,7 +19,8 @@ interface PeseeRow {
   montant: number;
   prix_transport_kg: number;
   montant_transport: number;
-  paye: number;
+  paye_regime: number;
+  paye_transport: number;
   ts: number;
   created_by: string;
   annulee: number;
@@ -44,7 +45,8 @@ function toPesee(row: PeseeRow): Pesee {
     montant: row.montant,
     prixTransportKg: row.prix_transport_kg,
     montantTransport: row.montant_transport,
-    paye: row.paye === 1,
+    payeRegime: row.paye_regime === 1,
+    payeTransport: row.paye_transport === 1,
     ts: row.ts,
     createdBy: row.created_by,
     annulee: row.annulee === 1,
@@ -83,8 +85,8 @@ export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): 
   const num = (countRow?.count ?? 0) + 1;
 
   await db.runAsync(
-    `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, type_vehicule, immatriculation, origine, poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye, ts, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, type_vehicule, immatriculation, origine, poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye_regime, paye_transport, ts, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
     id,
     num,
     input.numTicketPesee.trim(),
@@ -129,7 +131,8 @@ export async function createPesee(db: SQLiteDatabase, input: CreatePeseeInput): 
     montant,
     prixTransportKg: input.prixTransportKg,
     montantTransport,
-    paye: false,
+    payeRegime: false,
+    payeTransport: false,
     ts,
     createdBy: input.userId,
     annulee: false,
@@ -162,17 +165,34 @@ export async function annulerPesee(
   });
 }
 
-export async function togglePaye(
+export async function togglePayeRegime(
   db: SQLiteDatabase,
   id: string,
   paye: boolean,
   actor: { userId: string; userNom: string }
 ): Promise<void> {
-  await db.runAsync('UPDATE pesees SET paye = ? WHERE id = ?', paye ? 1 : 0, id);
+  await db.runAsync('UPDATE pesees SET paye_regime = ? WHERE id = ?', paye ? 1 : 0, id);
   await logAudit(db, {
     userId: actor.userId,
     userNom: actor.userNom,
-    action: paye ? 'marquer_paye' : 'marquer_impaye',
+    action: paye ? 'marquer_paye_regime' : 'marquer_impaye_regime',
+    entity: 'pesee',
+    entityId: id,
+    details: '',
+  });
+}
+
+export async function togglePayeTransportRegime(
+  db: SQLiteDatabase,
+  id: string,
+  paye: boolean,
+  actor: { userId: string; userNom: string }
+): Promise<void> {
+  await db.runAsync('UPDATE pesees SET paye_transport = ? WHERE id = ?', paye ? 1 : 0, id);
+  await logAudit(db, {
+    userId: actor.userId,
+    userNom: actor.userNom,
+    action: paye ? 'marquer_paye_transport' : 'marquer_impaye_transport',
     entity: 'pesee',
     entityId: id,
     details: '',

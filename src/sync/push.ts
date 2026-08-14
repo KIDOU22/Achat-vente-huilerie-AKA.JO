@@ -109,7 +109,8 @@ export async function pushPesee(p: Pesee): Promise<PushResult> {
       montant: p.montant,
       prix_transport_kg: p.prixTransportKg,
       montant_transport: p.montantTransport,
-      paye: p.paye,
+      paye_regime: p.payeRegime,
+      paye_transport: p.payeTransport,
       ts: new Date(p.ts).toISOString(),
       created_by: p.createdBy,
       annulee: p.annulee,
@@ -147,7 +148,8 @@ export async function pushVente(v: Vente): Promise<PushResult> {
       montant: v.montant,
       prix_transport_kg: v.prixTransportKg,
       montant_transport: v.montantTransport,
-      paye: v.paye,
+      paye_huile: v.payeHuile,
+      paye_transport: v.payeTransport,
       ts: new Date(v.ts).toISOString(),
       created_by: v.createdBy,
       annulee: v.annulee,
@@ -166,36 +168,70 @@ export async function pushVente(v: Vente): Promise<PushResult> {
   }
 }
 
-export async function pushPayeStatus(peseeId: string, paye: boolean): Promise<PushResult> {
+export async function pushPayeRegimeStatus(peseeId: string, paye: boolean): Promise<PushResult> {
   if (!supabase) return { ok: false, error: 'Supabase non configuré' };
   if (!UUID_RE.test(peseeId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
   try {
-    const { error } = await supabase.from('pesees').update({ paye }).eq('id', peseeId);
+    const { error } = await supabase.from('pesees').update({ paye_regime: paye }).eq('id', peseeId);
     if (error) {
-      console.warn('[sync] pushPayeStatus a échoué :', error.message);
+      console.warn('[sync] pushPayeRegimeStatus a échoué :', error.message);
       return { ok: false, error: error.message };
     }
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn('[sync] pushPayeStatus a échoué :', err);
+    console.warn('[sync] pushPayeRegimeStatus a échoué :', err);
     return { ok: false, error: message };
   }
 }
 
-export async function pushPayeStatusVente(venteId: string, paye: boolean): Promise<PushResult> {
+export async function pushPayeTransportPeseeStatus(peseeId: string, paye: boolean): Promise<PushResult> {
   if (!supabase) return { ok: false, error: 'Supabase non configuré' };
-  if (!UUID_RE.test(venteId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  if (!UUID_RE.test(peseeId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
   try {
-    const { error } = await supabase.from('ventes').update({ paye }).eq('id', venteId);
+    const { error } = await supabase.from('pesees').update({ paye_transport: paye }).eq('id', peseeId);
     if (error) {
-      console.warn('[sync] pushPayeStatusVente a échoué :', error.message);
+      console.warn('[sync] pushPayeTransportPeseeStatus a échoué :', error.message);
       return { ok: false, error: error.message };
     }
     return { ok: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn('[sync] pushPayeStatusVente a échoué :', err);
+    console.warn('[sync] pushPayeTransportPeseeStatus a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+export async function pushPayeHuileStatus(venteId: string, paye: boolean): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(venteId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('ventes').update({ paye_huile: paye }).eq('id', venteId);
+    if (error) {
+      console.warn('[sync] pushPayeHuileStatus a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushPayeHuileStatus a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+export async function pushPayeTransportVenteStatus(venteId: string, paye: boolean): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(venteId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('ventes').update({ paye_transport: paye }).eq('id', venteId);
+    if (error) {
+      console.warn('[sync] pushPayeTransportVenteStatus a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushPayeTransportVenteStatus a échoué :', err);
     return { ok: false, error: message };
   }
 }
@@ -269,6 +305,7 @@ export async function pushMouvement(m: MouvementCaisse): Promise<PushResult> {
       statut: m.statut,
       pesee_id: m.peseeId,
       vente_id: m.venteId,
+      volet: m.volet,
       created_by: m.createdBy,
       created_by_nom: m.createdByNom,
       validated_by: m.validatedBy,
@@ -319,11 +356,11 @@ export async function pushMouvementStatus(
   }
 }
 
-export async function pushDeleteMouvementForPesee(peseeId: string): Promise<PushResult> {
+export async function pushDeleteMouvementForPesee(peseeId: string, volet: 'produit' | 'transport'): Promise<PushResult> {
   if (!supabase) return { ok: false, error: 'Supabase non configuré' };
   if (!UUID_RE.test(peseeId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
   try {
-    const { error } = await supabase.from('mouvements_caisse').delete().eq('pesee_id', peseeId).eq('type', 'depense');
+    const { error } = await supabase.from('mouvements_caisse').delete().eq('pesee_id', peseeId).eq('volet', volet);
     if (error) {
       console.warn('[sync] pushDeleteMouvementForPesee a échoué :', error.message);
       return { ok: false, error: error.message };
@@ -336,11 +373,11 @@ export async function pushDeleteMouvementForPesee(peseeId: string): Promise<Push
   }
 }
 
-export async function pushDeleteMouvementForVente(venteId: string): Promise<PushResult> {
+export async function pushDeleteMouvementForVente(venteId: string, volet: 'produit' | 'transport'): Promise<PushResult> {
   if (!supabase) return { ok: false, error: 'Supabase non configuré' };
   if (!UUID_RE.test(venteId)) return { ok: false, error: 'id local invalide (pas un UUID)' };
   try {
-    const { error } = await supabase.from('mouvements_caisse').delete().eq('vente_id', venteId).eq('type', 'apport');
+    const { error } = await supabase.from('mouvements_caisse').delete().eq('vente_id', venteId).eq('volet', volet);
     if (error) {
       console.warn('[sync] pushDeleteMouvementForVente a échoué :', error.message);
       return { ok: false, error: error.message };

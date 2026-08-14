@@ -15,13 +15,31 @@ type Row = { kind: 'pesee'; item: Pesee } | { kind: 'vente'; item: Vente };
 
 export function HistoriqueScreen() {
   const { isElevated } = useAuth();
-  const { pesees, ventes, planteurs, caisses, togglePaye, togglePayeVente, annulerPesee, annulerVente } = useAppData();
+  const {
+    pesees,
+    ventes,
+    planteurs,
+    caisses,
+    togglePayeRegime,
+    togglePayeTransportRegime,
+    togglePayeVenteHuile,
+    togglePayeVenteTransport,
+    annulerPesee,
+    annulerVente,
+  } = useAppData();
   const [motifCible, setMotifCible] = useState<{ kind: 'pesee' | 'vente'; id: string } | null>(null);
   const [motif, setMotif] = useState('');
-  const [payerVenteCible, setPayerVenteCible] = useState<string | null>(null);
+  const [payerVenteCible, setPayerVenteCible] = useState<{ venteId: string; volet: 'produit' | 'transport' } | null>(null);
 
-  const impayes = useMemo(() => pesees.filter((p) => !p.paye && !p.annulee), [pesees]);
-  const impayesTotal = useMemo(() => impayes.reduce((s, p) => s + p.montant, 0), [impayes]);
+  const impayes = useMemo(
+    () => pesees.filter((p) => !p.annulee && (!p.payeRegime || !p.payeTransport)),
+    [pesees]
+  );
+  const impayesTotal = useMemo(
+    () =>
+      impayes.reduce((s, p) => s + (p.payeRegime ? 0 : p.montant) + (p.payeTransport ? 0 : p.montantTransport), 0),
+    [impayes]
+  );
   const planteurById = (id: string) => planteurs.find((p) => p.id === id);
   const caissePrincipale = caisses.find((c) => c.type === 'principale');
   const caisseBanque = caisses.find((c) => c.type === 'banque');
@@ -31,19 +49,33 @@ export function HistoriqueScreen() {
     setMotifCible({ kind, id });
   }
 
-  function handleToggleVente(vente: Vente, paye: boolean) {
+  function handleToggleVenteHuile(vente: Vente, paye: boolean) {
     if (paye) {
       // Le vendeur choisit la caisse destinataire avant que le paiement ne soit
       // effectif — voir la modale "Quelle caisse reçoit ce paiement ?" ci-dessous.
-      setPayerVenteCible(vente.id);
+      setPayerVenteCible({ venteId: vente.id, volet: 'produit' });
     } else {
-      togglePayeVente(vente.id, false);
+      togglePayeVenteHuile(vente.id, false);
+    }
+  }
+
+  function handleToggleVenteTransport(vente: Vente, paye: boolean) {
+    if (paye) {
+      // Le transport d'une vente est une dépense (coût) — on choisit aussi la caisse
+      // qui le paie avant que ce soit effectif.
+      setPayerVenteCible({ venteId: vente.id, volet: 'transport' });
+    } else {
+      togglePayeVenteTransport(vente.id, false);
     }
   }
 
   function confirmerPaiementVente(caisseId: string) {
     if (!payerVenteCible) return;
-    togglePayeVente(payerVenteCible, true, caisseId);
+    if (payerVenteCible.volet === 'produit') {
+      togglePayeVenteHuile(payerVenteCible.venteId, true, caisseId);
+    } else {
+      togglePayeVenteTransport(payerVenteCible.venteId, true, caisseId);
+    }
     setPayerVenteCible(null);
   }
 
@@ -105,7 +137,8 @@ export function HistoriqueScreen() {
             <PeseeRow
               pesee={row.item}
               planteurNom={planteurById(row.item.planteurId)?.nom}
-              onTogglePaye={togglePaye}
+              onTogglePayeRegime={togglePayeRegime}
+              onTogglePayeTransport={togglePayeTransportRegime}
               isManager={isElevated}
               onAnnuler={() => demanderAnnulation('pesee', row.item.id)}
             />
@@ -113,7 +146,8 @@ export function HistoriqueScreen() {
             <VenteRow
               vente={row.item}
               isManager={isElevated}
-              onTogglePaye={(paye) => handleToggleVente(row.item, paye)}
+              onTogglePayeHuile={(paye) => handleToggleVenteHuile(row.item, paye)}
+              onTogglePayeTransport={(paye) => handleToggleVenteTransport(row.item, paye)}
               onAnnuler={() => demanderAnnulation('vente', row.item.id)}
             />
           )
@@ -143,7 +177,9 @@ export function HistoriqueScreen() {
       <Modal visible={!!payerVenteCible} transparent animationType="fade" onRequestClose={() => setPayerVenteCible(null)}>
         <View style={styles.modalOverlay}>
           <Card style={{ width: '100%', maxWidth: 360, gap: 12 }}>
-            <Text style={styles.cardTitleText}>Quelle caisse reçoit ce paiement ?</Text>
+            <Text style={styles.cardTitleText}>
+              {payerVenteCible?.volet === 'transport' ? 'Quelle caisse paie ce transport ?' : 'Quelle caisse reçoit ce paiement ?'}
+            </Text>
             <View style={{ gap: 10 }}>
               <Button
                 label="Caisse principale"
@@ -166,16 +202,32 @@ export function HistoriqueScreen() {
   );
 }
 
+function PayePill({ label, paye, onPress }: { label: string; paye: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.payePill, { backgroundColor: paye ? `${colors.frond}33` : `${colors.accent}33` }]}
+    >
+      {paye ? <Check size={11} color={colors.frond} /> : <X size={11} color={colors.accent} />}
+      <Text style={{ color: paye ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 11 }}>
+        {label} {paye ? 'payé' : 'impayé'}
+      </Text>
+    </Pressable>
+  );
+}
+
 function PeseeRow({
   pesee,
   planteurNom,
-  onTogglePaye,
+  onTogglePayeRegime,
+  onTogglePayeTransport,
   isManager,
   onAnnuler,
 }: {
   pesee: Pesee;
   planteurNom: string | undefined;
-  onTogglePaye: (id: string, paye: boolean) => Promise<void>;
+  onTogglePayeRegime: (id: string, paye: boolean) => Promise<void>;
+  onTogglePayeTransport: (id: string, paye: boolean) => Promise<void>;
   isManager: boolean;
   onAnnuler: () => void;
 }) {
@@ -196,15 +248,16 @@ function PeseeRow({
             <Text style={styles.annuleePillText}>Annulée</Text>
           </View>
         ) : (
-          <Pressable
-            onPress={() => onTogglePaye(pesee.id, !pesee.paye)}
-            style={[styles.payePill, { backgroundColor: pesee.paye ? `${colors.frond}33` : `${colors.accent}33` }]}
-          >
-            {pesee.paye ? <Check size={11} color={colors.frond} /> : <X size={11} color={colors.accent} />}
-            <Text style={{ color: pesee.paye ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 11 }}>
-              {pesee.paye ? 'Payé' : 'Impayé'}
-            </Text>
-          </Pressable>
+          <View style={{ gap: 6, alignItems: 'flex-end' }}>
+            <PayePill label="Régime" paye={pesee.payeRegime} onPress={() => onTogglePayeRegime(pesee.id, !pesee.payeRegime)} />
+            {pesee.montantTransport > 0 && (
+              <PayePill
+                label="Transport"
+                paye={pesee.payeTransport}
+                onPress={() => onTogglePayeTransport(pesee.id, !pesee.payeTransport)}
+              />
+            )}
+          </View>
         )}
       </View>
       {!!pesee.annulee && !!pesee.motifAnnulation && (
@@ -216,6 +269,12 @@ function PeseeRow({
         </Text>
         <Text style={styles.footerRight}>{formatFCFA(pesee.montant)}</Text>
       </View>
+      {pesee.montantTransport > 0 && (
+        <View style={styles.cardFooter}>
+          <Text style={styles.footerLeft}>Transport — {pesee.chauffeur}</Text>
+          <Text style={styles.footerRight}>{formatFCFA(pesee.montantTransport)}</Text>
+        </View>
+      )}
       {isManager && !pesee.annulee && (
         <Pressable onPress={onAnnuler} style={styles.annulerBtn} hitSlop={8}>
           <Undo2 size={12} color={colors.textFaint} />
@@ -229,12 +288,14 @@ function PeseeRow({
 function VenteRow({
   vente,
   isManager,
-  onTogglePaye,
+  onTogglePayeHuile,
+  onTogglePayeTransport,
   onAnnuler,
 }: {
   vente: Vente;
   isManager: boolean;
-  onTogglePaye: (paye: boolean) => void;
+  onTogglePayeHuile: (paye: boolean) => void;
+  onTogglePayeTransport: (paye: boolean) => void;
   onAnnuler: () => void;
 }) {
   return (
@@ -255,15 +316,16 @@ function VenteRow({
           </View>
         ) : (
           isManager && (
-            <Pressable
-              onPress={() => onTogglePaye(!vente.paye)}
-              style={[styles.payePill, { backgroundColor: vente.paye ? `${colors.frond}33` : `${colors.accent}33` }]}
-            >
-              {vente.paye ? <Check size={11} color={colors.frond} /> : <X size={11} color={colors.accent} />}
-              <Text style={{ color: vente.paye ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 11 }}>
-                {vente.paye ? 'Payé' : 'Impayé'}
-              </Text>
-            </Pressable>
+            <View style={{ gap: 6, alignItems: 'flex-end' }}>
+              <PayePill label="Huile" paye={vente.payeHuile} onPress={() => onTogglePayeHuile(!vente.payeHuile)} />
+              {vente.montantTransport > 0 && (
+                <PayePill
+                  label="Transport"
+                  paye={vente.payeTransport}
+                  onPress={() => onTogglePayeTransport(!vente.payeTransport)}
+                />
+              )}
+            </View>
           )
         )}
       </View>
@@ -281,6 +343,12 @@ function VenteRow({
           </View>
         )}
       </View>
+      {isManager && vente.montantTransport > 0 && (
+        <View style={styles.cardFooter}>
+          <Text style={styles.footerLeft}>Transport — {vente.chauffeur}</Text>
+          <Text style={styles.footerRight}>{formatFCFA(vente.montantTransport)}</Text>
+        </View>
+      )}
       {isManager && !vente.annulee && (
         <Pressable onPress={onAnnuler} style={styles.annulerBtn} hitSlop={8}>
           <Undo2 size={12} color={colors.textFaint} />

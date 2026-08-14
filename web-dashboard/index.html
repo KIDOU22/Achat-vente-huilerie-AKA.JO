@@ -302,7 +302,7 @@ function renderAchats(pesees, planteurs) {
   const nomParPlanteur = {};
   for (const pl of planteurs) nomParPlanteur[pl.id] = pl.nom;
   const table = document.getElementById('table-achats');
-  table.querySelector('thead').innerHTML = `<tr><th>N° pesée</th><th>Planteur</th><th>Chauffeur</th><th>Net</th><th>Prix/kg</th><th>Montant</th><th>Transport</th><th>Statut</th></tr>`;
+  table.querySelector('thead').innerHTML = `<tr><th>N° pesée</th><th>Planteur</th><th>Chauffeur</th><th>Net</th><th>Prix/kg</th><th>Montant</th><th>Transport</th><th>Régime</th><th>Transport</th></tr>`;
   table.querySelector('tbody').innerHTML = pesees.slice(0, 20).map((p) => `
     <tr>
       <td>${p.num_ticket}</td>
@@ -312,9 +312,10 @@ function renderAchats(pesees, planteurs) {
       <td>${fmtF(p.prix_kg)}</td>
       <td>${fmtF(p.montant)}</td>
       <td>${fmtF(p.montant_transport)}</td>
-      <td><span class="pill ${p.paye ? 'paye' : 'impaye'}">${p.paye ? 'Payé' : 'Impayé'}</span></td>
+      <td><span class="pill ${p.paye_regime ? 'paye' : 'impaye'}">${p.paye_regime ? 'Payé' : 'Impayé'}</span></td>
+      <td><span class="pill ${p.paye_transport ? 'paye' : 'impaye'}">${p.paye_transport ? 'Payé' : 'Impayé'}</span></td>
     </tr>
-  `).join('') || `<tr><td class="muted" colspan="8">Aucune pesée</td></tr>`;
+  `).join('') || `<tr><td class="muted" colspan="9">Aucune pesée</td></tr>`;
 }
 
 function renderVentes(ventes) {
@@ -429,7 +430,7 @@ async function exportAchats() {
     }
     const nomParPlanteur = {};
     for (const pl of allPlanteurs) nomParPlanteur[pl.id] = pl.nom;
-    const headers = ['N° pesée', 'Date', 'Planteur', 'Chauffeur', 'Véhicule', 'Immatriculation', 'Poids chargé (kg)', 'Poids vide (kg)', 'Net (kg)', 'Prix/kg', 'Montant', 'Prix transport/kg', 'Montant transport', 'Statut paiement', 'Statut'];
+    const headers = ['N° pesée', 'Date', 'Planteur', 'Chauffeur', 'Véhicule', 'Immatriculation', 'Poids chargé (kg)', 'Poids vide (kg)', 'Net (kg)', 'Prix/kg', 'Montant', 'Prix transport/kg', 'Montant transport', 'Statut paiement régime', 'Statut paiement transport', 'Statut'];
     const rows = (data || []).map((p) => [
       p.num_ticket,
       new Date(p.ts).toLocaleString('fr-FR'),
@@ -444,7 +445,8 @@ async function exportAchats() {
       p.montant,
       p.prix_transport_kg,
       p.montant_transport,
-      p.paye ? 'Payé' : 'Impayé',
+      p.paye_regime ? 'Payé' : 'Impayé',
+      p.paye_transport ? 'Payé' : 'Impayé',
       p.annulee ? 'Annulée' : 'Active',
     ]);
     downloadCSV(`achats_${dateForFilename(range.from)}_${dateForFilename(range.to)}.csv`, toCSV(headers, rows));

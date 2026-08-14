@@ -44,7 +44,8 @@ export interface Pesee {
   montant: number;
   prixTransportKg: number;
   montantTransport: number;
-  paye: boolean;
+  payeRegime: boolean;
+  payeTransport: boolean;
   ts: number;
   createdBy: string;
   annulee: boolean;
@@ -67,7 +68,8 @@ export interface Vente {
   montant: number;
   prixTransportKg: number;
   montantTransport: number;
-  paye: boolean;
+  payeHuile: boolean;
+  payeTransport: boolean;
   ts: number;
   createdBy: string;
   annulee: boolean;
@@ -115,6 +117,7 @@ export interface MouvementCaisse {
   statut: MouvementStatut;
   peseeId: string | null;
   venteId: string | null;
+  volet: 'produit' | 'transport' | null;
   createdBy: string;
   createdByNom: string;
   validatedBy: string | null;

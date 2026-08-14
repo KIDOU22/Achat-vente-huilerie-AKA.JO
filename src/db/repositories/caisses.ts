@@ -31,6 +31,7 @@ interface MouvementRow {
   statut: MouvementStatut;
   pesee_id: string | null;
   vente_id: string | null;
+  volet: 'produit' | 'transport' | null;
   created_by: string;
   created_by_nom: string;
   validated_by: string | null;
@@ -50,6 +51,7 @@ function toMouvement(row: MouvementRow): MouvementCaisse {
     statut: row.statut,
     peseeId: row.pesee_id,
     venteId: row.vente_id,
+    volet: row.volet,
     createdBy: row.created_by,
     createdByNom: row.created_by_nom,
     validatedBy: row.validated_by,
@@ -215,6 +217,7 @@ async function insertMouvement(
     statut: MouvementStatut;
     peseeId?: string | null;
     venteId?: string | null;
+    volet?: 'produit' | 'transport' | null;
     createdBy: string;
     createdByNom: string;
   }
@@ -223,8 +226,8 @@ async function insertMouvement(
   const ts = Date.now();
   await db.runAsync(
     `INSERT INTO mouvements_caisse
-       (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+       (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, volet, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
     id,
     input.type,
     input.caisseFromId,
@@ -234,6 +237,7 @@ async function insertMouvement(
     input.statut,
     input.peseeId ?? null,
     input.venteId ?? null,
+    input.volet ?? null,
     input.createdBy,
     input.createdByNom,
     ts,
@@ -249,6 +253,7 @@ async function insertMouvement(
     statut: input.statut,
     peseeId: input.peseeId ?? null,
     venteId: input.venteId ?? null,
+    volet: input.volet ?? null,
     createdBy: input.createdBy,
     createdByNom: input.createdByNom,
     validatedBy: null,
@@ -342,15 +347,24 @@ export async function enregistrerDepense(
   return m;
 }
 
-// Dépense automatique : une pesée marquée "payée" débite la caisse de l'agent qui l'a réglée.
-// Idempotent — un seul mouvement par pesée, supprimé si la pesée repasse à "impayée".
-export async function enregistrerDepensePesee(
+// Dépense automatique : un volet (régime ou transport) d'une pesée marqué "payé"
+// débite la caisse de l'agent qui l'a réglé — indépendamment de l'autre volet, qui
+// peut être payé à un autre moment. Idempotent par volet, supprimé si ce volet
+// repasse à "impayé" (voir annulerPaiementPesee).
+export async function enregistrerPaiementPesee(
   db: SQLiteDatabase,
-  input: { caisseId: string; peseeId: string; montant: number; actor: { userId: string; userNom: string } }
+  input: {
+    caisseId: string;
+    peseeId: string;
+    volet: 'produit' | 'transport';
+    montant: number;
+    actor: { userId: string; userNom: string };
+  }
 ): Promise<MouvementCaisse | null> {
   const existing = await db.getFirstAsync<{ id: string }>(
-    "SELECT id FROM mouvements_caisse WHERE pesee_id = ? AND type = 'depense'",
-    input.peseeId
+    "SELECT id FROM mouvements_caisse WHERE pesee_id = ? AND type = 'depense' AND volet = ?",
+    input.peseeId,
+    input.volet
   );
   if (existing) return null;
   return insertMouvement(db, {
@@ -358,45 +372,77 @@ export async function enregistrerDepensePesee(
     caisseFromId: input.caisseId,
     caisseToId: null,
     montant: input.montant,
-    motif: 'Paiement pesée',
+    motif: input.volet === 'produit' ? 'Paiement pesée — régime' : 'Paiement pesée — transport',
     statut: 'validee',
     peseeId: input.peseeId,
+    volet: input.volet,
     createdBy: input.actor.userId,
     createdByNom: input.actor.userNom,
   });
 }
 
-export async function annulerDepensePesee(db: SQLiteDatabase, peseeId: string): Promise<void> {
-  await db.runAsync("DELETE FROM mouvements_caisse WHERE pesee_id = ? AND type = 'depense'", peseeId);
+export async function annulerPaiementPesee(
+  db: SQLiteDatabase,
+  peseeId: string,
+  volet: 'produit' | 'transport'
+): Promise<void> {
+  await db.runAsync("DELETE FROM mouvements_caisse WHERE pesee_id = ? AND type = 'depense' AND volet = ?", peseeId, volet);
 }
 
-// Crédit automatique : une vente marquée "payée" crédite la caisse choisie par le
-// vendeur (caisse principale ou banque). Idempotent — un seul mouvement par vente,
-// supprimé si la vente repasse à "impayée".
-export async function enregistrerCreditVente(
+// Une vente : le volet "produit" (huile) marqué "payé" crédite la caisse choisie par
+// le vendeur (recette) ; le volet "transport" marqué "payé" débite la caisse choisie
+// (dépense — c'est un coût, voir "prix de revient" dans l'écran Vente). Chaque volet
+// est indépendant et idempotent, supprimé si ce volet repasse à "impayé".
+export async function enregistrerPaiementVente(
   db: SQLiteDatabase,
-  input: { caisseId: string; venteId: string; montant: number; actor: { userId: string; userNom: string } }
+  input: {
+    caisseId: string;
+    venteId: string;
+    volet: 'produit' | 'transport';
+    montant: number;
+    actor: { userId: string; userNom: string };
+  }
 ): Promise<MouvementCaisse | null> {
   const existing = await db.getFirstAsync<{ id: string }>(
-    "SELECT id FROM mouvements_caisse WHERE vente_id = ? AND type = 'apport'",
-    input.venteId
+    'SELECT id FROM mouvements_caisse WHERE vente_id = ? AND volet = ?',
+    input.venteId,
+    input.volet
   );
   if (existing) return null;
+  if (input.volet === 'produit') {
+    return insertMouvement(db, {
+      type: 'apport',
+      caisseFromId: null,
+      caisseToId: input.caisseId,
+      montant: input.montant,
+      motif: 'Paiement vente huile',
+      statut: 'validee',
+      venteId: input.venteId,
+      volet: 'produit',
+      createdBy: input.actor.userId,
+      createdByNom: input.actor.userNom,
+    });
+  }
   return insertMouvement(db, {
-    type: 'apport',
-    caisseFromId: null,
-    caisseToId: input.caisseId,
+    type: 'depense',
+    caisseFromId: input.caisseId,
+    caisseToId: null,
     montant: input.montant,
-    motif: 'Paiement vente huile',
+    motif: 'Paiement transport vente huile',
     statut: 'validee',
     venteId: input.venteId,
+    volet: 'transport',
     createdBy: input.actor.userId,
     createdByNom: input.actor.userNom,
   });
 }
 
-export async function annulerCreditVente(db: SQLiteDatabase, venteId: string): Promise<void> {
-  await db.runAsync("DELETE FROM mouvements_caisse WHERE vente_id = ? AND type = 'apport'", venteId);
+export async function annulerPaiementVente(
+  db: SQLiteDatabase,
+  venteId: string,
+  volet: 'produit' | 'transport'
+): Promise<void> {
+  await db.runAsync('DELETE FROM mouvements_caisse WHERE vente_id = ? AND volet = ?', venteId, volet);
 }
 
 // L'agent (ou gérant) demande à retourner de l'argent à la caisse principale : en attente

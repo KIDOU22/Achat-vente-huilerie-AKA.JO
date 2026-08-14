@@ -25,10 +25,19 @@ export function AchatTicketCard({ t, planteur }: { t: Pesee; planteur: Planteur 
       <Row label="Poids net" value={formatKg(t.net)} bold />
       <Row label="Prix/kg" value={formatFCFA(t.prixKg)} />
       {t.montantTransport > 0 && <Row label="Coût transport" value={formatFCFA(t.montantTransport)} />}
-      <View style={[styles.statusPill, { backgroundColor: t.paye ? `${colors.frond}33` : `${colors.accent}33` }]}>
-        <Text style={{ color: t.paye ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 12 }}>
-          {t.paye ? 'Payé' : 'Impayé'}
-        </Text>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+        <View style={[styles.statusPill, { marginTop: 0, backgroundColor: t.payeRegime ? `${colors.frond}33` : `${colors.accent}33` }]}>
+          <Text style={{ color: t.payeRegime ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 12 }}>
+            Régime {t.payeRegime ? 'payé' : 'impayé'}
+          </Text>
+        </View>
+        {t.montantTransport > 0 && (
+          <View style={[styles.statusPill, { marginTop: 0, backgroundColor: t.payeTransport ? `${colors.frond}33` : `${colors.accent}33` }]}>
+            <Text style={{ color: t.payeTransport ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 12 }}>
+              Transport {t.payeTransport ? 'payé' : 'impayé'}
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );

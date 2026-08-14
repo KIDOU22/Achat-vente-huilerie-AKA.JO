@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS pesees (
   montant REAL NOT NULL,
   prix_transport_kg REAL NOT NULL DEFAULT 0,
   montant_transport REAL NOT NULL DEFAULT 0,
-  paye INTEGER NOT NULL DEFAULT 0,
+  paye_regime INTEGER NOT NULL DEFAULT 0,
+  paye_transport INTEGER NOT NULL DEFAULT 0,
   ts INTEGER NOT NULL,
   created_by TEXT NOT NULL
 );
@@ -68,7 +69,8 @@ CREATE TABLE IF NOT EXISTS ventes (
   montant REAL NOT NULL,
   prix_transport_kg REAL NOT NULL DEFAULT 0,
   montant_transport REAL NOT NULL DEFAULT 0,
-  paye INTEGER NOT NULL DEFAULT 0,
+  paye_huile INTEGER NOT NULL DEFAULT 0,
+  paye_transport INTEGER NOT NULL DEFAULT 0,
   ts INTEGER NOT NULL,
   created_by TEXT NOT NULL
 );
@@ -110,6 +112,7 @@ CREATE TABLE IF NOT EXISTS mouvements_caisse (
   statut TEXT NOT NULL CHECK (statut IN ('en_attente', 'validee', 'rejetee')),
   pesee_id TEXT,
   vente_id TEXT,
+  volet TEXT,
   created_by TEXT NOT NULL,
   created_by_nom TEXT NOT NULL,
   validated_by TEXT,
@@ -140,6 +143,12 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'caisses', 'owner_identifiant', 'TEXT');
   await ensureColumn(db, 'ventes', 'paye', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(db, 'mouvements_caisse', 'vente_id', 'TEXT');
+  await ensureColumn(db, 'pesees', 'paye_regime', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'pesees', 'paye_transport', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'ventes', 'paye_huile', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'ventes', 'paye_transport', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'mouvements_caisse', 'volet', 'TEXT');
+  await backfillPaiementSepare(db);
   await ensureUsersAllowsDirigeant(db);
   await seedIfEmpty(db);
   await fusionnerCaissesUniquesEnDouble(db);
@@ -236,6 +245,27 @@ async function ensureColumn(db: SQLiteDatabase, table: string, column: string, d
   const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
   if (!columns.some((c) => c.name === column)) {
     await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+// Reprend l'ancien statut "payé" (unique, régime+transport ensemble) pour
+// initialiser les deux nouveaux drapeaux indépendants sur une installation déjà
+// en place — sans effet sur une installation neuve (colonne "paye" inexistante,
+// rien à reprendre). Les mouvements de caisse déjà enregistrés restent groupés
+// (historique) ; seule Supabase, source unique, les scinde en deux lignes — voir
+// la migration 0016_paiement_separe.sql.
+async function backfillPaiementSepare(db: SQLiteDatabase): Promise<void> {
+  const peseeColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(pesees)');
+  if (peseeColumns.some((c) => c.name === 'paye')) {
+    await db.execAsync(
+      'UPDATE pesees SET paye_regime = 1, paye_transport = 1 WHERE paye = 1 AND paye_regime = 0 AND paye_transport = 0'
+    );
+  }
+  const venteColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(ventes)');
+  if (venteColumns.some((c) => c.name === 'paye')) {
+    await db.execAsync(
+      'UPDATE ventes SET paye_huile = 1, paye_transport = 1 WHERE paye = 1 AND paye_huile = 0 AND paye_transport = 0'
+    );
   }
 }
 

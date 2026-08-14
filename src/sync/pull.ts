@@ -135,11 +135,12 @@ async function pullPesees(db: SQLiteDatabase): Promise<void> {
   for (const row of data) {
     await db.runAsync(
       `INSERT INTO pesees (id, num, num_ticket, planteur_id, chauffeur, type_vehicule, immatriculation, origine,
-         poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye, ts, created_by,
+         poids_charge, poids_vide, net, prix_kg, montant, prix_transport_kg, montant_transport, paye_regime, paye_transport, ts, created_by,
          annulee, annulee_par, motif_annulation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
-         paye = excluded.paye, montant = excluded.montant, montant_transport = excluded.montant_transport,
+         paye_regime = excluded.paye_regime, paye_transport = excluded.paye_transport,
+         montant = excluded.montant, montant_transport = excluded.montant_transport,
          annulee = excluded.annulee, annulee_par = excluded.annulee_par, motif_annulation = excluded.motif_annulation`,
       row.id,
       row.num,
@@ -156,7 +157,8 @@ async function pullPesees(db: SQLiteDatabase): Promise<void> {
       row.montant,
       row.prix_transport_kg,
       row.montant_transport,
-      row.paye ? 1 : 0,
+      row.paye_regime ? 1 : 0,
+      row.paye_transport ? 1 : 0,
       new Date(row.ts).getTime(),
       row.created_by,
       row.annulee ? 1 : 0,
@@ -176,11 +178,11 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
   for (const row of data) {
     await db.runAsync(
       `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation,
-         poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, paye, ts, created_by,
+         poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, paye_huile, paye_transport, ts, created_by,
          annulee, annulee_par, motif_annulation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET montant = excluded.montant, montant_transport = excluded.montant_transport,
-         paye = excluded.paye,
+         paye_huile = excluded.paye_huile, paye_transport = excluded.paye_transport,
          annulee = excluded.annulee, annulee_par = excluded.annulee_par, motif_annulation = excluded.motif_annulation`,
       row.id,
       row.num,
@@ -196,7 +198,8 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
       row.montant,
       row.prix_transport_kg,
       row.montant_transport,
-      row.paye ? 1 : 0,
+      row.paye_huile ? 1 : 0,
+      row.paye_transport ? 1 : 0,
       new Date(row.ts).getTime(),
       row.created_by,
       row.annulee ? 1 : 0,
@@ -253,12 +256,13 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
   for (const row of data) {
     await db.runAsync(
       `INSERT INTO mouvements_caisse
-         (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, volet, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          statut = excluded.statut, validated_by = excluded.validated_by,
          validated_by_nom = excluded.validated_by_nom, validated_at = excluded.validated_at,
-         caisse_from_id = excluded.caisse_from_id, caisse_to_id = excluded.caisse_to_id`,
+         caisse_from_id = excluded.caisse_from_id, caisse_to_id = excluded.caisse_to_id,
+         montant = excluded.montant, volet = excluded.volet`,
       row.id,
       row.type,
       row.caisse_from_id,
@@ -268,6 +272,7 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
       row.statut,
       row.pesee_id,
       row.vente_id,
+      row.volet,
       row.created_by,
       row.created_by_nom,
       row.validated_by,
