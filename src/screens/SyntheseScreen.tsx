@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Search } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { BarChart } from '../components/BarChart';
 import { useAppData } from '../data/DataContext';
@@ -267,6 +267,12 @@ function BreakdownCard({ title, rows }: { title: string; rows: { label: string; 
 function PartenaireBreakdownCard({ title, rows }: { title: string; rows: { partenaire: Partenaire; stats: PartenaireStats }[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(
+    () => (search.trim() ? rows.filter((r) => r.partenaire.nom.toLowerCase().includes(search.trim().toLowerCase())) : rows),
+    [rows, search]
+  );
 
   return (
     <View>
@@ -277,41 +283,53 @@ function PartenaireBreakdownCard({ title, rows }: { title: string; rows: { parte
         {open ? <ChevronUp size={16} color={colors.textMuted} /> : <ChevronDown size={16} color={colors.textMuted} />}
       </Pressable>
       {open && (
-        <View style={styles.breakdownCard}>
-          {rows.length === 0 ? (
-            <Text style={styles.empty}>Aucune activité sur cette période</Text>
-          ) : (
-            rows.map((row, i) => (
-              <Pressable
-                key={row.partenaire.id}
-                onPress={() => router.push(`/partenaire/${row.partenaire.id}`)}
-                style={[styles.breakdownRow, i === rows.length - 1 && { borderBottomWidth: 0 }]}
-              >
-                <View style={{ flexShrink: 1 }}>
-                  <Text style={styles.breakdownName}>{row.partenaire.nom}</Text>
-                  <Text style={styles.breakdownSub}>
-                    {formatTonnes(row.stats.tonnage)} · {row.stats.livraisons} livraison{row.stats.livraisons > 1 ? 's' : ''}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.breakdownValue}>{formatFCFA(row.stats.montantPaye)} reçu</Text>
-                  <Text
-                    style={[
-                      styles.breakdownSub,
-                      { color: row.stats.solde > 0 ? colors.accent : row.stats.solde < 0 ? colors.frond : colors.textFaint },
-                    ]}
-                  >
-                    {row.stats.solde > 0
-                      ? `${formatFCFA(row.stats.solde)} impayé`
-                      : row.stats.solde < 0
-                        ? `${formatFCFA(-row.stats.solde)} créance`
-                        : 'Soldé'}
-                  </Text>
-                </View>
-              </Pressable>
-            ))
-          )}
-        </View>
+        <>
+          <View style={styles.searchRow}>
+            <Search size={14} color={colors.textFaint} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Rechercher par nom"
+              placeholderTextColor={colors.placeholder}
+              style={styles.searchInput}
+            />
+          </View>
+          <View style={styles.breakdownCard}>
+            {filtered.length === 0 ? (
+              <Text style={styles.empty}>{rows.length === 0 ? 'Aucune activité sur cette période' : 'Aucun résultat'}</Text>
+            ) : (
+              filtered.map((row, i) => (
+                <Pressable
+                  key={row.partenaire.id}
+                  onPress={() => router.push(`/partenaire/${row.partenaire.id}`)}
+                  style={[styles.breakdownRow, i === filtered.length - 1 && { borderBottomWidth: 0 }]}
+                >
+                  <View style={{ flexShrink: 1 }}>
+                    <Text style={styles.breakdownName}>{row.partenaire.nom}</Text>
+                    <Text style={styles.breakdownSub}>
+                      {formatTonnes(row.stats.tonnage)} · {row.stats.livraisons} livraison{row.stats.livraisons > 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.breakdownValue}>{formatFCFA(row.stats.montantPaye)} reçu</Text>
+                    <Text
+                      style={[
+                        styles.breakdownSub,
+                        { color: row.stats.solde > 0 ? colors.accent : row.stats.solde < 0 ? colors.frond : colors.textFaint },
+                      ]}
+                    >
+                      {row.stats.solde > 0
+                        ? `${formatFCFA(row.stats.solde)} impayé`
+                        : row.stats.solde < 0
+                          ? `${formatFCFA(-row.stats.solde)} créance`
+                          : 'Soldé'}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))
+            )}
+          </View>
+        </>
       )}
     </View>
   );
@@ -358,6 +376,19 @@ const styles = StyleSheet.create({
   metriqueText: { fontFamily: fonts.bodyMedium, fontSize: 10, color: colors.textMuted },
   metriqueTextActive: { color: colors.onBackground },
   chartCard: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  searchInput: { flex: 1, paddingVertical: 9, color: colors.text, fontFamily: fonts.body, fontSize: 13 },
   breakdownCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
