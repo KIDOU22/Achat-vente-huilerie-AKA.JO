@@ -51,12 +51,13 @@ export function statsFournisseurRegime(
   return { partenaireId, tonnage, livraisons, montantDu, montantPaye, solde: montantDu - montantPaye };
 }
 
-// Chauffeur : montant dû = transport (régime ET huile confondus, tout ce qu'il a
-// transporté), payé par volet "transport".
+// Chauffeur : montant dû = transport régime (pesees.montantTransport), payé par
+// volet "transport". Le transport d'une vente n'est PAS compté ici : contrairement
+// à l'achat, le chauffeur d'une vente est un texte libre (souvent le camion du
+// client lui-même) et n'est jamais relié à une fiche partenaire — voir Vente.chauffeur.
 export function statsChauffeur(
   partenaireId: string,
   pesees: Pesee[],
-  ventes: Vente[],
   mouvements: MouvementCaisse[],
   filtre?: { periode: Periode; key: string }
 ): PartenaireStats {
@@ -64,7 +65,6 @@ export function statsChauffeur(
   let livraisons = 0;
   let montantDu = 0;
   const idsPesees = new Set<string>();
-  const idsVentes = new Set<string>();
   for (const p of pesees) {
     if (p.annulee || p.chauffeurId !== partenaireId || !inPeriode(p.ts, filtre)) continue;
     tonnage += p.net;
@@ -72,21 +72,12 @@ export function statsChauffeur(
     montantDu += p.montantTransport;
     idsPesees.add(p.id);
   }
-  for (const v of ventes) {
-    if (v.annulee || v.chauffeurId !== partenaireId || !inPeriode(v.ts, filtre)) continue;
-    tonnage += v.net;
-    livraisons += 1;
-    montantDu += v.montantTransport;
-    idsVentes.add(v.id);
-  }
   let montantPaye = 0;
   for (const m of mouvements) {
     if (m.type !== 'depense' || m.volet !== 'transport' || m.statut !== 'validee' || !inPeriode(m.ts, filtre)) continue;
     if (m.partenaireId === partenaireId) {
       montantPaye += m.montant;
     } else if (m.peseeId && idsPesees.has(m.peseeId)) {
-      montantPaye += m.montant;
-    } else if (m.venteId && idsVentes.has(m.venteId)) {
       montantPaye += m.montant;
     }
   }
@@ -103,7 +94,7 @@ export function statsPartenaire(
   filtre?: { periode: Periode; key: string }
 ): PartenaireStats {
   if (partenaire.type === 'chauffeur') {
-    return statsChauffeur(partenaire.id, pesees, ventes, mouvements, filtre);
+    return statsChauffeur(partenaire.id, pesees, mouvements, filtre);
   }
   return statsFournisseurRegime(partenaire.id, pesees, mouvements, filtre);
 }

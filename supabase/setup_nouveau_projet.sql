@@ -1,7 +1,7 @@
 -- Huilerie Aka.Jo — création complète du schéma sur un PROJET SUPABASE NEUF
 -- (utile pour un environnement de démo/test, séparé de la production).
 -- Regroupe en un seul script l'état final de toutes les migrations
--- 0001 à 0017 (supabase/migrations/) — inutile de les rejouer une par une sur un
+-- 0001 à 0018 (supabase/migrations/) — inutile de les rejouer une par une sur un
 -- projet neuf. Sans effet destructeur si rejoué : repart d'une base propre si les
 -- tables existent déjà (comme 0001_init.sql).
 -- À exécuter UNE SEULE FOIS, juste après avoir créé le projet Supabase :
@@ -175,8 +175,9 @@ create table public.ventes (
   num integer not null,
   num_ticket text not null,
   client text not null,
+  -- Texte libre, volontairement pas relié à un partenaire chauffeur (souvent le
+  -- camion du client lui-même) — contrairement à pesees.chauffeur_id.
   chauffeur text not null,
-  chauffeur_id uuid references public.planteurs(id),
   type_vehicule text not null,
   immatriculation text not null,
   poids_charge numeric not null,
@@ -212,7 +213,7 @@ create policy "ventes_update" on public.ventes
 -- ventes (client, poids, véhicule, statut d'annulation...) sans jamais accéder au
 -- prix/montant/transport.
 create or replace view public.ventes_agent_view as
-select id, num, num_ticket, client, chauffeur, chauffeur_id, type_vehicule, immatriculation,
+select id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation,
        poids_charge, poids_vide, net, ts, created_by, annulee, annulee_par, motif_annulation,
        paye_huile, paye_transport
 from public.ventes;

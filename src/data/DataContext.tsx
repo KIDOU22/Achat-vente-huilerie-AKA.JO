@@ -84,7 +84,7 @@ interface DataContextValue {
   addPartenaire: (input: CreatePartenaireInput) => Promise<Partenaire>;
   supprimerPartenaire: (id: string) => Promise<void>;
   enregistrerPesee: (input: Omit<CreatePeseeInput, 'userId' | 'userNom' | 'chauffeurNom'>) => Promise<Pesee>;
-  enregistrerVente: (input: Omit<CreateVenteInput, 'userId' | 'userNom' | 'chauffeurNom'>) => Promise<Vente>;
+  enregistrerVente: (input: Omit<CreateVenteInput, 'userId' | 'userNom'>) => Promise<Vente>;
   togglePayeRegime: (id: string, paye: boolean) => Promise<void>;
   togglePayeTransportRegime: (id: string, paye: boolean) => Promise<void>;
   togglePayeVenteHuile: (id: string, paye: boolean, caisseId?: string) => Promise<void>;
@@ -329,26 +329,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const enregistrerVente = useCallback(
-    async (input: Omit<CreateVenteInput, 'userId' | 'userNom' | 'chauffeurNom'>) => {
+    async (input: Omit<CreateVenteInput, 'userId' | 'userNom'>) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
-      const chauffeurNom = partenaires.find((p) => p.id === input.chauffeurId)?.nom ?? '';
-      const t = await createVente(db, { ...input, chauffeurNom, userId: currentUser.id, userNom: currentUser.nom });
+      const t = await createVente(db, { ...input, userId: currentUser.id, userNom: currentUser.nom });
       await refresh();
-      const chauffeur = partenaires.find((p) => p.id === input.chauffeurId);
-      (async () => {
-        if (chauffeur) {
-          const rp = await pushPartenaire(chauffeur).catch((err) => ({ ok: false, error: String(err) }));
-          if (!rp.ok) {
-            Alert.alert('Synchro cloud échouée (partenaire)', rp.error ?? 'Erreur inconnue');
-            return;
-          }
-        }
-        const rt = await pushVente(t).catch((err) => ({ ok: false, error: String(err) }));
-        if (!rt.ok) Alert.alert('Synchro cloud échouée (vente)', rt.error ?? 'Erreur inconnue');
-      })();
+      pushVente(t)
+        .then((r) => {
+          if (!r.ok) Alert.alert('Synchro cloud échouée (vente)', r.error ?? 'Erreur inconnue');
+        })
+        .catch(() => {});
       return t;
     },
-    [db, refresh, currentUser, partenaires]
+    [db, refresh, currentUser]
   );
 
   const togglePayeRegime = useCallback(

@@ -143,7 +143,6 @@ export async function pushVente(v: Vente): Promise<PushResult> {
       num_ticket: v.numTicketPesee,
       client: v.client,
       chauffeur: v.chauffeur,
-      chauffeur_id: v.chauffeurId,
       type_vehicule: v.typeVehicule,
       immatriculation: v.immatriculation,
       poids_charge: v.poidsCharge,

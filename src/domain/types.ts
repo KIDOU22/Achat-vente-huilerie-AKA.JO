@@ -74,8 +74,10 @@ export interface Vente {
   num: number;
   numTicketPesee: string;
   client: string;
+  // Texte libre, volontairement pas relié à un partenaire chauffeur : souvent le
+  // camion/chauffeur du client lui-même ("Citerne client"), pas un chauffeur de la
+  // maison — contrairement à l'achat, voir Pesee.chauffeurId.
   chauffeur: string;
-  chauffeurId: string | null;
   typeVehicule: string;
   immatriculation: string;
   poidsCharge: number;

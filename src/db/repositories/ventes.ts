@@ -9,7 +9,6 @@ interface VenteRow {
   num_ticket: string;
   client: string;
   chauffeur: string;
-  chauffeur_id: string | null;
   type_vehicule: string;
   immatriculation: string;
   poids_charge: number;
@@ -35,7 +34,6 @@ function toVente(row: VenteRow): Vente {
     numTicketPesee: row.num_ticket,
     client: row.client,
     chauffeur: row.chauffeur,
-    chauffeurId: row.chauffeur_id,
     typeVehicule: row.type_vehicule,
     immatriculation: row.immatriculation,
     poidsCharge: row.poids_charge,
@@ -63,8 +61,7 @@ export async function listVentes(db: SQLiteDatabase): Promise<Vente[]> {
 export interface CreateVenteInput {
   numTicketPesee: string;
   client: string;
-  chauffeurId: string;
-  chauffeurNom: string;
+  chauffeur: string;
   typeVehicule: string;
   immatriculation: string;
   poidsCharge: number;
@@ -85,14 +82,13 @@ export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): 
   const num = (countRow?.count ?? 0) + 1;
 
   await db.runAsync(
-    `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, chauffeur_id, type_vehicule, immatriculation, poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, paye_huile, paye_transport, ts, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+    `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation, poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, paye_huile, paye_transport, ts, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
     id,
     num,
     input.numTicketPesee.trim(),
     input.client.trim(),
-    input.chauffeurNom.trim(),
-    input.chauffeurId,
+    input.chauffeur.trim(),
     input.typeVehicule,
     input.immatriculation.trim(),
     input.poidsCharge,
@@ -120,8 +116,7 @@ export async function createVente(db: SQLiteDatabase, input: CreateVenteInput): 
     num,
     numTicketPesee: input.numTicketPesee.trim(),
     client: input.client.trim(),
-    chauffeur: input.chauffeurNom.trim(),
-    chauffeurId: input.chauffeurId,
+    chauffeur: input.chauffeur.trim(),
     typeVehicule: input.typeVehicule,
     immatriculation: input.immatriculation.trim(),
     poidsCharge: input.poidsCharge,

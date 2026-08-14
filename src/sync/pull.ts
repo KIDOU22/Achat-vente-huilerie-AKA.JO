@@ -184,12 +184,12 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
   if (error || !data) return;
   for (const row of data) {
     await db.runAsync(
-      `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, chauffeur_id, type_vehicule, immatriculation,
+      `INSERT INTO ventes (id, num, num_ticket, client, chauffeur, type_vehicule, immatriculation,
          poids_charge, poids_vide, net, prix_litre, montant, prix_transport_kg, montant_transport, paye_huile, paye_transport, ts, created_by,
          annulee, annulee_par, motif_annulation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET montant = excluded.montant, montant_transport = excluded.montant_transport,
-         chauffeur = excluded.chauffeur, chauffeur_id = excluded.chauffeur_id,
+         chauffeur = excluded.chauffeur,
          paye_huile = excluded.paye_huile, paye_transport = excluded.paye_transport,
          annulee = excluded.annulee, annulee_par = excluded.annulee_par, motif_annulation = excluded.motif_annulation`,
       row.id,
@@ -197,7 +197,6 @@ async function pullVentes(db: SQLiteDatabase): Promise<void> {
       row.num_ticket,
       row.client,
       row.chauffeur,
-      row.chauffeur_id,
       row.type_vehicule,
       row.immatriculation,
       row.poids_charge,

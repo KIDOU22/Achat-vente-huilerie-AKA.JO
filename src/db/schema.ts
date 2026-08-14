@@ -64,7 +64,6 @@ CREATE TABLE IF NOT EXISTS ventes (
   num_ticket TEXT NOT NULL,
   client TEXT NOT NULL,
   chauffeur TEXT NOT NULL,
-  chauffeur_id TEXT,
   type_vehicule TEXT NOT NULL,
   immatriculation TEXT NOT NULL,
   poids_charge REAL NOT NULL,
@@ -159,7 +158,6 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await ensureColumn(db, 'planteurs', 'localisation', "TEXT NOT NULL DEFAULT '—'");
   await ensureColumn(db, 'planteurs', 'responsable', "TEXT NOT NULL DEFAULT '—'");
   await ensureColumn(db, 'pesees', 'chauffeur_id', 'TEXT');
-  await ensureColumn(db, 'ventes', 'chauffeur_id', 'TEXT');
   await ensureColumn(db, 'mouvements_caisse', 'partenaire_id', 'TEXT');
   await ensureUsersAllowsDirigeant(db);
   await seedIfEmpty(db);
