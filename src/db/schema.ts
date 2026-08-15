@@ -165,6 +165,26 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await fusionnerPlanteursEnDouble(db);
 }
 
+// Colonnes réellement présentes sur une table donnée (nom uniquement) — utilisé pour
+// recopier des données entre deux formes d'une même table SANS dépendre de l'ordre
+// physique des colonnes (voir explication au-dessus de chaque fonction ensure*Allows*
+// ci-dessous : un SELECT * associe les colonnes par POSITION, pas par nom, ce qui
+// corrompt silencieusement les données — ou viole une contrainte NOT NULL et fait
+// planter l'app au démarrage — dès que l'ordre diffère entre l'ancienne et la
+// nouvelle table, ce qui arrive dès qu'une colonne a été ajoutée via ensureColumn à
+// un moment différent selon l'historique de mises à jour du téléphone).
+async function existingColumns(db: SQLiteDatabase, table: string): Promise<Set<string>> {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  return new Set(columns.map((c) => c.name));
+}
+
+// Construit la liste "col1, col2, ..." pour un SELECT, en substituant NULL pour
+// toute colonne absente de la table source (recréation depuis une base très
+// ancienne où cette colonne n'existait pas encore à ce stade de la migration).
+function selectListRobuste(colonnes: string[], presentes: Set<string>): string {
+  return colonnes.map((c) => (presentes.has(c) ? c : 'NULL')).join(', ');
+}
+
 // SQLite ne permet pas de modifier une contrainte CHECK existante avec ALTER TABLE :
 // sur une base créée avant l'ajout du type "apport", on recrée la table avec la
 // nouvelle contrainte et on recopie les données (sans risque, no-op si déjà à jour).
@@ -178,6 +198,7 @@ async function ensureMouvementsCaisseAllowsApport(db: SQLiteDatabase): Promise<v
   await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_from');
   await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_to');
   await db.execAsync('ALTER TABLE mouvements_caisse RENAME TO mouvements_caisse_old');
+  const presentes = await existingColumns(db, 'mouvements_caisse_old');
   await db.execAsync(`
     CREATE TABLE mouvements_caisse (
       id TEXT PRIMARY KEY NOT NULL,
@@ -196,7 +217,13 @@ async function ensureMouvementsCaisseAllowsApport(db: SQLiteDatabase): Promise<v
       validated_at INTEGER
     )
   `);
-  await db.execAsync('INSERT INTO mouvements_caisse SELECT * FROM mouvements_caisse_old');
+  const colonnes = [
+    'id', 'type', 'caisse_from_id', 'caisse_to_id', 'montant', 'motif', 'statut',
+    'pesee_id', 'created_by', 'created_by_nom', 'validated_by', 'validated_by_nom', 'ts', 'validated_at',
+  ];
+  await db.execAsync(
+    `INSERT INTO mouvements_caisse (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM mouvements_caisse_old`
+  );
   await db.execAsync('DROP TABLE mouvements_caisse_old');
   await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_ts ON mouvements_caisse(ts)');
   await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_from ON mouvements_caisse(caisse_from_id)');
@@ -212,6 +239,7 @@ async function ensureCaissesAllowsBanque(db: SQLiteDatabase): Promise<void> {
 
   await db.execAsync('DROP INDEX IF EXISTS idx_caisses_user');
   await db.execAsync('ALTER TABLE caisses RENAME TO caisses_old');
+  const presentes = await existingColumns(db, 'caisses_old');
   await db.execAsync(`
     CREATE TABLE caisses (
       id TEXT PRIMARY KEY NOT NULL,
@@ -221,7 +249,10 @@ async function ensureCaissesAllowsBanque(db: SQLiteDatabase): Promise<void> {
       created_at INTEGER NOT NULL
     )
   `);
-  await db.execAsync('INSERT INTO caisses SELECT * FROM caisses_old');
+  const colonnes = ['id', 'type', 'user_id', 'owner_identifiant', 'created_at'];
+  await db.execAsync(
+    `INSERT INTO caisses (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM caisses_old`
+  );
   await db.execAsync('DROP TABLE caisses_old');
   await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_caisses_user ON caisses(user_id)');
 }
@@ -234,6 +265,7 @@ async function ensureUsersAllowsDirigeant(db: SQLiteDatabase): Promise<void> {
   if (!row || row.sql.includes('dirigeant')) return;
 
   await db.execAsync('ALTER TABLE users RENAME TO users_old');
+  const presentes = await existingColumns(db, 'users_old');
   await db.execAsync(`
     CREATE TABLE users (
       id TEXT PRIMARY KEY NOT NULL,
@@ -246,7 +278,10 @@ async function ensureUsersAllowsDirigeant(db: SQLiteDatabase): Promise<void> {
       created_at INTEGER NOT NULL
     )
   `);
-  await db.execAsync('INSERT INTO users SELECT * FROM users_old');
+  const colonnes = ['id', 'identifiant', 'code_hash', 'nom', 'role', 'actif', 'doit_changer_code', 'created_at'];
+  await db.execAsync(
+    `INSERT INTO users (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM users_old`
+  );
   await db.execAsync('DROP TABLE users_old');
 }
 
