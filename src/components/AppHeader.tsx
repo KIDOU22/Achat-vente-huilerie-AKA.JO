@@ -65,49 +65,62 @@ export function AppHeader() {
       </View>
 
       <View style={styles.statsStrip}>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>Régimes — jour</Text>
-          <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatTonnes(totalTonnageJour)}</Text>
+        <Text style={styles.statsTitle}>Chiffres du jour</Text>
+
+        <View style={styles.statsGroup}>
+          <Text style={styles.statsGroupLabel}>Achats</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>Régime</Text>
+              <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatTonnes(totalTonnageJour)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>Produit</Text>
+              <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalAchatJour)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>Transport</Text>
+              <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalTransportAchatJour)}</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>Total</Text>
+              <Text style={[styles.statValue, { color: colors.onBackground }]}>
+                {formatFCFA(totalAchatJour + totalTransportAchatJour)}
+              </Text>
+            </View>
+          </View>
         </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>Achats — jour</Text>
-          <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalAchatJour)}</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>Transport régime — jour</Text>
-          <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalTransportAchatJour)}</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>Total achats — jour</Text>
-          <Text style={[styles.statValue, { color: colors.onBackground }]}>
-            {formatFCFA(totalAchatJour + totalTransportAchatJour)}
-          </Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>Ventes huile — jour</Text>
-          {isElevated ? (
-            <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalVenteJour)}</Text>
-          ) : (
-            <Lock size={14} color={colors.onBackgroundFaint} />
-          )}
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>Transport huile — jour</Text>
-          {isElevated ? (
-            <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalTransportVenteJour)}</Text>
-          ) : (
-            <Lock size={14} color={colors.onBackgroundFaint} />
-          )}
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>Total ventes — jour</Text>
-          {isElevated ? (
-            <Text style={[styles.statValue, { color: colors.onBackground }]}>
-              {formatFCFA(totalVenteJour + totalTransportVenteJour)}
-            </Text>
-          ) : (
-            <Lock size={14} color={colors.onBackgroundFaint} />
-          )}
+
+        <View style={styles.statsGroup}>
+          <Text style={styles.statsGroupLabel}>Ventes</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>Huile</Text>
+              {isElevated ? (
+                <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalVenteJour)}</Text>
+              ) : (
+                <Lock size={14} color={colors.onBackgroundFaint} />
+              )}
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>Transport</Text>
+              {isElevated ? (
+                <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalTransportVenteJour)}</Text>
+              ) : (
+                <Lock size={14} color={colors.onBackgroundFaint} />
+              )}
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>Total</Text>
+              {isElevated ? (
+                <Text style={[styles.statValue, { color: colors.onBackground }]}>
+                  {formatFCFA(totalVenteJour + totalTransportVenteJour)}
+                </Text>
+              ) : (
+                <Lock size={14} color={colors.onBackgroundFaint} />
+              )}
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -159,17 +172,28 @@ const styles = StyleSheet.create({
   userName: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.onBackground },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   statsStrip: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    rowGap: 14,
-    columnGap: 8,
+    paddingVertical: 10,
+    gap: 8,
     backgroundColor: colors.backgroundAlt,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
-  statCell: { flexBasis: '30%', flexGrow: 1, gap: 2 },
-  statLabel: { fontFamily: fonts.mono, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: colors.onBackgroundFaint },
-  statValue: { fontFamily: fonts.mono, fontSize: 17, fontWeight: '600' },
+  statsTitle: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: colors.onBackgroundFaint,
+  },
+  statsGroup: { gap: 4 },
+  statsGroupLabel: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
+    color: colors.onBackgroundMuted,
+  },
+  statsRow: { flexDirection: 'row' },
+  statCell: { flex: 1, gap: 1 },
+  statLabel: { fontFamily: fonts.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5, color: colors.onBackgroundFaint },
+  statValue: { fontFamily: fonts.mono, fontSize: 14, fontWeight: '600' },
 });
