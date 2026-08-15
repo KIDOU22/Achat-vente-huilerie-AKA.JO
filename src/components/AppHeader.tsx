@@ -29,7 +29,9 @@ export function AppHeader() {
   );
   const totalTonnageJour = todayPesees.reduce((s, p) => s + p.net, 0);
   const totalAchatJour = todayPesees.reduce((s, p) => s + p.montant, 0);
+  const totalTransportAchatJour = todayPesees.reduce((s, p) => s + p.montantTransport, 0);
   const totalVenteJour = todayVentes.reduce((s, v) => s + v.montant, 0);
+  const totalTransportVenteJour = todayVentes.reduce((s, v) => s + v.montantTransport, 0);
 
   if (!currentUser) return null;
 
@@ -67,16 +69,42 @@ export function AppHeader() {
           <Text style={styles.statLabel}>Régimes — jour</Text>
           <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatTonnes(totalTonnageJour)}</Text>
         </View>
-        <View style={styles.divider} />
         <View style={styles.statCell}>
           <Text style={styles.statLabel}>Achats — jour</Text>
           <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalAchatJour)}</Text>
         </View>
-        <View style={styles.divider} />
         <View style={styles.statCell}>
-          <Text style={styles.statLabel}>Ventes huile</Text>
+          <Text style={styles.statLabel}>Transport régime — jour</Text>
+          <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalTransportAchatJour)}</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>Total achats — jour</Text>
+          <Text style={[styles.statValue, { color: colors.onBackground }]}>
+            {formatFCFA(totalAchatJour + totalTransportAchatJour)}
+          </Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>Ventes huile — jour</Text>
           {isElevated ? (
             <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalVenteJour)}</Text>
+          ) : (
+            <Lock size={14} color={colors.onBackgroundFaint} />
+          )}
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>Transport huile — jour</Text>
+          {isElevated ? (
+            <Text style={[styles.statValue, { color: colors.onBackground }]}>{formatFCFA(totalTransportVenteJour)}</Text>
+          ) : (
+            <Lock size={14} color={colors.onBackgroundFaint} />
+          )}
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>Total ventes — jour</Text>
+          {isElevated ? (
+            <Text style={[styles.statValue, { color: colors.onBackground }]}>
+              {formatFCFA(totalVenteJour + totalTransportVenteJour)}
+            </Text>
           ) : (
             <Lock size={14} color={colors.onBackgroundFaint} />
           )}
@@ -132,14 +160,16 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   statsStrip: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 20,
     paddingVertical: 12,
+    rowGap: 14,
+    columnGap: 8,
     backgroundColor: colors.backgroundAlt,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
-  statCell: { flex: 1, gap: 2 },
+  statCell: { flexBasis: '30%', flexGrow: 1, gap: 2 },
   statLabel: { fontFamily: fonts.mono, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: colors.onBackgroundFaint },
   statValue: { fontFamily: fonts.mono, fontSize: 17, fontWeight: '600' },
-  divider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.borderSubtle, marginHorizontal: 8 },
 });
