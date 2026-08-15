@@ -131,6 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id);
 `;
 
 export async function migrate(db: SQLiteDatabase): Promise<void> {
+  await repareMigrationInterrompue(db);
   await db.execAsync(SCHEMA_SQL);
   await ensureMouvementsCaisseAllowsApport(db);
   await ensureCaissesAllowsBanque(db);
@@ -185,104 +186,150 @@ function selectListRobuste(colonnes: string[], presentes: Set<string>): string {
   return colonnes.map((c) => (presentes.has(c) ? c : 'NULL')).join(', ');
 }
 
+async function tableExiste(db: SQLiteDatabase, table: string): Promise<boolean> {
+  const row = await db.getFirstAsync<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    table
+  );
+  return row != null;
+}
+
+// Répare une migration interrompue en plein milieu (l'app tuée par le système entre
+// le RENAME d'une table et sa recréation — plausible sur un téléphone bas de gamme,
+// notamment juste après l'installation d'une nouvelle version). Avant l'ajout des
+// transactions ci-dessous, un tel arrêt laissait la table principale manquante
+// (renommée en *_old) : au lancement suivant, tout le reste de migrate() qui suppose
+// son existence (ensureColumn, etc.) échouait à nouveau — un plantage systématique à
+// chaque ouverture, seule une réinstallation complète (base vidée) rétablissait un
+// état cohérent. DOIT s'exécuter AVANT SCHEMA_SQL : un CREATE TABLE IF NOT EXISTS sur
+// une table déjà renommée en *_old la recréerait vide, perdant silencieusement les
+// données restées coincées dans *_old.
+async function repareMigrationInterrompue(db: SQLiteDatabase): Promise<void> {
+  for (const table of ['mouvements_caisse', 'caisses', 'users']) {
+    const old = `${table}_old`;
+    const [principale, sauvegarde] = await Promise.all([tableExiste(db, table), tableExiste(db, old)]);
+    if (!principale && sauvegarde) {
+      // Arrêt juste après le RENAME : on restaure l'ancienne table pour repartir
+      // d'un état cohérent — la migration sera retentée juste après, désormais
+      // protégée par une transaction.
+      await db.execAsync(`ALTER TABLE ${old} RENAME TO ${table}`);
+    } else if (principale && sauvegarde) {
+      // Arrêt juste après la copie des données mais avant le nettoyage final : les
+      // données utiles sont déjà dans la table principale, la copie est superflue.
+      await db.execAsync(`DROP TABLE ${old}`);
+    }
+  }
+}
+
 // SQLite ne permet pas de modifier une contrainte CHECK existante avec ALTER TABLE :
 // sur une base créée avant l'ajout du type "apport", on recrée la table avec la
 // nouvelle contrainte et on recopie les données (sans risque, no-op si déjà à jour).
+// L'ensemble tourne dans une transaction : si l'app est tuée en plein milieu, SQLite
+// annule tout au prochain démarrage au lieu de laisser la table à moitié migrée (ce
+// qui provoquait un plantage systématique — voir repareMigrationInterrompue).
 async function ensureMouvementsCaisseAllowsApport(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ sql: string }>(
     "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mouvements_caisse'"
   );
   if (!row || row.sql.includes('apport')) return;
 
-  await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_ts');
-  await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_from');
-  await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_to');
-  await db.execAsync('ALTER TABLE mouvements_caisse RENAME TO mouvements_caisse_old');
-  const presentes = await existingColumns(db, 'mouvements_caisse_old');
-  await db.execAsync(`
-    CREATE TABLE mouvements_caisse (
-      id TEXT PRIMARY KEY NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('allocation', 'depense', 'retour', 'transfert', 'apport')),
-      caisse_from_id TEXT,
-      caisse_to_id TEXT,
-      montant REAL NOT NULL,
-      motif TEXT NOT NULL DEFAULT '',
-      statut TEXT NOT NULL CHECK (statut IN ('en_attente', 'validee', 'rejetee')),
-      pesee_id TEXT,
-      created_by TEXT NOT NULL,
-      created_by_nom TEXT NOT NULL,
-      validated_by TEXT,
-      validated_by_nom TEXT,
-      ts INTEGER NOT NULL,
-      validated_at INTEGER
-    )
-  `);
-  const colonnes = [
-    'id', 'type', 'caisse_from_id', 'caisse_to_id', 'montant', 'motif', 'statut',
-    'pesee_id', 'created_by', 'created_by_nom', 'validated_by', 'validated_by_nom', 'ts', 'validated_at',
-  ];
-  await db.execAsync(
-    `INSERT INTO mouvements_caisse (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM mouvements_caisse_old`
-  );
-  await db.execAsync('DROP TABLE mouvements_caisse_old');
-  await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_ts ON mouvements_caisse(ts)');
-  await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_from ON mouvements_caisse(caisse_from_id)');
-  await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id)');
+  await db.withTransactionAsync(async () => {
+    await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_ts');
+    await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_from');
+    await db.execAsync('DROP INDEX IF EXISTS idx_mouvements_to');
+    await db.execAsync('ALTER TABLE mouvements_caisse RENAME TO mouvements_caisse_old');
+    const presentes = await existingColumns(db, 'mouvements_caisse_old');
+    await db.execAsync(`
+      CREATE TABLE mouvements_caisse (
+        id TEXT PRIMARY KEY NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('allocation', 'depense', 'retour', 'transfert', 'apport')),
+        caisse_from_id TEXT,
+        caisse_to_id TEXT,
+        montant REAL NOT NULL,
+        motif TEXT NOT NULL DEFAULT '',
+        statut TEXT NOT NULL CHECK (statut IN ('en_attente', 'validee', 'rejetee')),
+        pesee_id TEXT,
+        created_by TEXT NOT NULL,
+        created_by_nom TEXT NOT NULL,
+        validated_by TEXT,
+        validated_by_nom TEXT,
+        ts INTEGER NOT NULL,
+        validated_at INTEGER
+      )
+    `);
+    const colonnes = [
+      'id', 'type', 'caisse_from_id', 'caisse_to_id', 'montant', 'motif', 'statut',
+      'pesee_id', 'created_by', 'created_by_nom', 'validated_by', 'validated_by_nom', 'ts', 'validated_at',
+    ];
+    await db.execAsync(
+      `INSERT INTO mouvements_caisse (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM mouvements_caisse_old`
+    );
+    await db.execAsync('DROP TABLE mouvements_caisse_old');
+    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_ts ON mouvements_caisse(ts)');
+    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_from ON mouvements_caisse(caisse_from_id)');
+    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id)');
+  });
 }
 
-// Même contrainte SQLite qu'au-dessus, pour le type "banque" ajouté sur la table caisses.
+// Même contrainte SQLite qu'au-dessus, pour le type "banque" ajouté sur la table
+// caisses — également protégé par une transaction, voir le commentaire ci-dessus.
 async function ensureCaissesAllowsBanque(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ sql: string }>(
     "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'caisses'"
   );
   if (!row || row.sql.includes('banque')) return;
 
-  await db.execAsync('DROP INDEX IF EXISTS idx_caisses_user');
-  await db.execAsync('ALTER TABLE caisses RENAME TO caisses_old');
-  const presentes = await existingColumns(db, 'caisses_old');
-  await db.execAsync(`
-    CREATE TABLE caisses (
-      id TEXT PRIMARY KEY NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('principale', 'secondaire', 'banque')),
-      user_id TEXT,
-      owner_identifiant TEXT,
-      created_at INTEGER NOT NULL
-    )
-  `);
-  const colonnes = ['id', 'type', 'user_id', 'owner_identifiant', 'created_at'];
-  await db.execAsync(
-    `INSERT INTO caisses (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM caisses_old`
-  );
-  await db.execAsync('DROP TABLE caisses_old');
-  await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_caisses_user ON caisses(user_id)');
+  await db.withTransactionAsync(async () => {
+    await db.execAsync('DROP INDEX IF EXISTS idx_caisses_user');
+    await db.execAsync('ALTER TABLE caisses RENAME TO caisses_old');
+    const presentes = await existingColumns(db, 'caisses_old');
+    await db.execAsync(`
+      CREATE TABLE caisses (
+        id TEXT PRIMARY KEY NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('principale', 'secondaire', 'banque')),
+        user_id TEXT,
+        owner_identifiant TEXT,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    const colonnes = ['id', 'type', 'user_id', 'owner_identifiant', 'created_at'];
+    await db.execAsync(
+      `INSERT INTO caisses (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM caisses_old`
+    );
+    await db.execAsync('DROP TABLE caisses_old');
+    await db.execAsync('CREATE UNIQUE INDEX IF NOT EXISTS idx_caisses_user ON caisses(user_id)');
+  });
 }
 
-// Même contrainte SQLite qu'au-dessus, pour le rôle "dirigeant" ajouté sur la table users.
+// Même contrainte SQLite qu'au-dessus, pour le rôle "dirigeant" ajouté sur la table
+// users — également protégé par une transaction, voir le commentaire ci-dessus.
 async function ensureUsersAllowsDirigeant(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ sql: string }>(
     "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
   );
   if (!row || row.sql.includes('dirigeant')) return;
 
-  await db.execAsync('ALTER TABLE users RENAME TO users_old');
-  const presentes = await existingColumns(db, 'users_old');
-  await db.execAsync(`
-    CREATE TABLE users (
-      id TEXT PRIMARY KEY NOT NULL,
-      identifiant TEXT UNIQUE NOT NULL,
-      code_hash TEXT NOT NULL,
-      nom TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('gerant', 'dirigeant', 'agent')),
-      actif INTEGER NOT NULL DEFAULT 1,
-      doit_changer_code INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL
-    )
-  `);
-  const colonnes = ['id', 'identifiant', 'code_hash', 'nom', 'role', 'actif', 'doit_changer_code', 'created_at'];
-  await db.execAsync(
-    `INSERT INTO users (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM users_old`
-  );
-  await db.execAsync('DROP TABLE users_old');
+  await db.withTransactionAsync(async () => {
+    await db.execAsync('ALTER TABLE users RENAME TO users_old');
+    const presentes = await existingColumns(db, 'users_old');
+    await db.execAsync(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY NOT NULL,
+        identifiant TEXT UNIQUE NOT NULL,
+        code_hash TEXT NOT NULL,
+        nom TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('gerant', 'dirigeant', 'agent')),
+        actif INTEGER NOT NULL DEFAULT 1,
+        doit_changer_code INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    const colonnes = ['id', 'identifiant', 'code_hash', 'nom', 'role', 'actif', 'doit_changer_code', 'created_at'];
+    await db.execAsync(
+      `INSERT INTO users (${colonnes.join(', ')}) SELECT ${selectListRobuste(colonnes, presentes)} FROM users_old`
+    );
+    await db.execAsync('DROP TABLE users_old');
+  });
 }
 
 // Ajoute une colonne manquante sur une base existante (installations déjà en place avant cette version du schéma).
