@@ -164,6 +164,41 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await seedIfEmpty(db);
   await fusionnerCaissesUniquesEnDouble(db);
   await fusionnerPlanteursEnDouble(db);
+  await dedupMouvementsPaiementEnDouble(db);
+}
+
+// Un mouvement de paiement (pesée ou vente, par volet produit/transport) créé deux
+// fois pour la même pesée/vente — ex: réparerPaiementsPeseesManquants() a pu tourner
+// sur deux appareils avant que l'un ne voie la création de l'autre, chacun créant sa
+// propre copie du mouvement "manquant". Nettoie les doublons déjà présents localement
+// (garde le plus ancien), puis pose une contrainte d'unicité qui empêche d'en recréer
+// — protection locale en complément de celle posée côté Supabase (voir
+// 0020_dedup_paiements_doublons.sql, qui répare aussi le cloud). Idempotent.
+async function dedupMouvementsPaiementEnDouble(db: SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    DELETE FROM mouvements_caisse WHERE id IN (
+      SELECT m1.id FROM mouvements_caisse m1
+      JOIN mouvements_caisse m2
+        ON m1.pesee_id = m2.pesee_id AND m1.volet = m2.volet
+       AND m1.pesee_id IS NOT NULL AND m1.volet IS NOT NULL
+       AND (m1.ts > m2.ts OR (m1.ts = m2.ts AND m1.id > m2.id))
+    )
+  `);
+  await db.execAsync(`
+    DELETE FROM mouvements_caisse WHERE id IN (
+      SELECT m1.id FROM mouvements_caisse m1
+      JOIN mouvements_caisse m2
+        ON m1.vente_id = m2.vente_id AND m1.volet = m2.volet
+       AND m1.vente_id IS NOT NULL AND m1.volet IS NOT NULL
+       AND (m1.ts > m2.ts OR (m1.ts = m2.ts AND m1.id > m2.id))
+    )
+  `);
+  await db.execAsync(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_mouvements_pesee_volet_unique ON mouvements_caisse(pesee_id, volet) WHERE pesee_id IS NOT NULL AND volet IS NOT NULL'
+  );
+  await db.execAsync(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_mouvements_vente_volet_unique ON mouvements_caisse(vente_id, volet) WHERE vente_id IS NOT NULL AND volet IS NOT NULL'
+  );
 }
 
 // Colonnes réellement présentes sur une table donnée (nom uniquement) — utilisé pour
