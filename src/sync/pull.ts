@@ -9,12 +9,20 @@ import { pushDeleteCaisse } from './push';
 // agent ne recevra jamais les lignes/colonnes de ventes réservées au gérant) et les
 // fusionne dans la base locale. Best-effort : ne fait rien si hors-ligne ou non
 // authentifié auprès de Supabase (l'app reste pleinement fonctionnelle en local).
-export async function pullAll(db: SQLiteDatabase): Promise<void> {
-  if (!supabase) return;
+// Renvoie true seulement si un tirage complet a réellement eu lieu (session valide et
+// aucune erreur) — les appelants qui déduisent "cette caisse n'existe pas encore" de
+// l'absence locale APRÈS un pull (ex: ensureSingletonCaisses) doivent vérifier cette
+// valeur : sans ça, un pull qui n'a rien pu faire (pas encore de session juste après
+// une connexion, ou une coupure réseau) serait pris pour un pull qui a confirmé
+// l'absence de la caisse — et en créerait un doublon dans le cloud à chaque fois. Voir
+// la migration 0019_dedup_caisses_singleton.sql, qui nettoie les doublons déjà
+// accumulés côté Supabase pour cette raison.
+export async function pullAll(db: SQLiteDatabase): Promise<boolean> {
+  if (!supabase) return false;
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  if (!session) return;
+  if (!session) return false;
 
   try {
     // Ordre important : les pesées référencent un planteur local (clé étrangère), et
@@ -38,8 +46,10 @@ export async function pullAll(db: SQLiteDatabase): Promise<void> {
       pushDeleteCaisse(id).catch(() => {});
     }
     await fusionnerPlanteursEnDouble(db);
+    return true;
   } catch (err) {
     console.warn('[sync] pullAll a échoué :', err);
+    return false;
   }
 }
 

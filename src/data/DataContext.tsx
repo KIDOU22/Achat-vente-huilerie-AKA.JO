@@ -255,9 +255,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     // Ne fait que tirer (jamais d'écriture) — sûr à appeler aussi souvent que
     // Realtime le déclenche, puisque ça ne peut jamais provoquer un nouvel événement.
-    async function pullAndRefresh() {
-      await pullAll(db);
+    // Renvoie si le tirage a réellement eu lieu (voir pullAll) — fullSync s'en sert
+    // pour ne jamais fabriquer de caisse sur la foi d'un pull qui n'a rien pu faire.
+    async function pullAndRefresh(): Promise<boolean> {
+      const pulled = await pullAll(db);
       if (!cancelled) await refreshRef.current();
+      return pulled;
     }
 
     // Important : la repousse doit se terminer AVANT le pull — sinon un changement
@@ -267,11 +270,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // cycle.
     async function fullSync() {
       await pushPending().catch(() => {});
-      await pullAndRefresh();
-      // Uniquement APRÈS le pull : une caisse (la mienne, ou la principale/banque)
-      // existant déjà côté cloud vient d'être rapatriée localement à l'instant si
-      // besoin — conclure à une caisse manquante avant d'avoir laissé cette chance au
-      // pull créerait un doublon à chaque appareil vidé/réinstallé.
+      const pulled = await pullAndRefresh();
+      // Uniquement APRÈS un pull qui a RÉELLEMENT eu lieu (pas juste tenté) : une
+      // caisse (la mienne, ou la principale/banque) existant déjà côté cloud vient
+      // d'être rapatriée localement si besoin — conclure à une caisse manquante sans
+      // certitude que le pull a pu s'exécuter (pas encore de session juste après une
+      // connexion, coupure réseau...) en créerait un doublon dans le cloud à chaque
+      // fois. C'est exactement ce qui a fait accumuler des dizaines de caisses
+      // "banque"/"principale" fantômes en pratique — voir la migration
+      // 0019_dedup_caisses_singleton.sql pour le nettoyage déjà effectué.
+      if (!pulled) return;
       await ensureSingletonCaisses(db);
       const user = currentUserRef.current;
       if (user) {
