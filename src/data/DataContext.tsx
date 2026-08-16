@@ -374,28 +374,51 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [db, refresh, currentUser]
   );
 
+  // Résout la caisse de l'agent qui a enregistré la pesée — d'abord dans la liste déjà
+  // en mémoire, sinon en resynchronisant une fois avant d'abandonner. Sans ce filet,
+  // une caisse pas encore visible localement (créée/synchronisée depuis un autre
+  // appareil) faisait échouer silencieusement la création du mouvement de caisse tout
+  // en laissant passer le statut "payé" : Historique (qui lit juste le drapeau)
+  // affichait payé, Synthèse (qui recalcule depuis les mouvements réels) restait
+  // impayée indéfiniment.
+  const resoudreCaisseCreateur = useCallback(
+    async (createdBy: string): Promise<Caisse | undefined> => {
+      const locale = caisses.find((c) => c.userId === createdBy);
+      if (locale) return locale;
+      await pullAll(db).catch(() => {});
+      const fraiches = await listCaisses(db);
+      return fraiches.find((c) => c.userId === createdBy);
+    },
+    [db, caisses]
+  );
+
   const togglePayeRegime = useCallback(
     async (id: string, paye: boolean) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
-      await togglePayeRegimeRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
-      // Le volet "régime" payé débite automatiquement la caisse de l'agent qui l'a
-      // réglé — indépendamment du transport, qui peut être payé à un autre moment.
       const pesee = pesees.find((p) => p.id === id);
-      const caisse = pesee ? caisses.find((c) => c.userId === pesee.createdBy) : undefined;
-      if (pesee && caisse) {
-        if (paye) {
-          const mouvement = await enregistrerPaiementPesee(db, {
-            caisseId: caisse.id,
-            peseeId: id,
-            volet: 'produit',
-            montant: pesee.montant,
-            actor: { userId: currentUser.id, userNom: currentUser.nom },
-          });
-          if (mouvement) pushMouvement(mouvement).catch(() => {});
-        } else {
-          await annulerPaiementPesee(db, id, 'produit');
-          pushDeleteMouvementForPesee(id, 'produit').catch(() => {});
+
+      if (paye && pesee) {
+        const caisse = await resoudreCaisseCreateur(pesee.createdBy);
+        if (!caisse) {
+          Alert.alert(
+            'Paiement non enregistré',
+            "Impossible de retrouver la caisse de l'agent qui a enregistré cette pesée sur cet appareil. Vérifiez la connexion puis réessayez."
+          );
+          return;
         }
+        await togglePayeRegimeRepo(db, id, true, { userId: currentUser.id, userNom: currentUser.nom });
+        const mouvement = await enregistrerPaiementPesee(db, {
+          caisseId: caisse.id,
+          peseeId: id,
+          volet: 'produit',
+          montant: pesee.montant,
+          actor: { userId: currentUser.id, userNom: currentUser.nom },
+        });
+        if (mouvement) pushMouvement(mouvement).catch(() => {});
+      } else {
+        await togglePayeRegimeRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
+        await annulerPaiementPesee(db, id, 'produit');
+        pushDeleteMouvementForPesee(id, 'produit').catch(() => {});
       }
       await refresh();
       const r = await pushPayeRegimeStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
@@ -403,29 +426,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         Alert.alert('Synchro cloud échouée (statut paiement régime)', r.error ?? 'Erreur inconnue');
       }
     },
-    [db, refresh, currentUser, pesees, caisses]
+    [db, refresh, currentUser, pesees, resoudreCaisseCreateur]
   );
 
   const togglePayeTransportRegime = useCallback(
     async (id: string, paye: boolean) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
-      await togglePayeTransportRegimeRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
       const pesee = pesees.find((p) => p.id === id);
-      const caisse = pesee ? caisses.find((c) => c.userId === pesee.createdBy) : undefined;
-      if (pesee && caisse) {
-        if (paye) {
-          const mouvement = await enregistrerPaiementPesee(db, {
-            caisseId: caisse.id,
-            peseeId: id,
-            volet: 'transport',
-            montant: pesee.montantTransport,
-            actor: { userId: currentUser.id, userNom: currentUser.nom },
-          });
-          if (mouvement) pushMouvement(mouvement).catch(() => {});
-        } else {
-          await annulerPaiementPesee(db, id, 'transport');
-          pushDeleteMouvementForPesee(id, 'transport').catch(() => {});
+
+      if (paye && pesee) {
+        const caisse = await resoudreCaisseCreateur(pesee.createdBy);
+        if (!caisse) {
+          Alert.alert(
+            'Paiement non enregistré',
+            "Impossible de retrouver la caisse de l'agent qui a enregistré cette pesée sur cet appareil. Vérifiez la connexion puis réessayez."
+          );
+          return;
         }
+        await togglePayeTransportRegimeRepo(db, id, true, { userId: currentUser.id, userNom: currentUser.nom });
+        const mouvement = await enregistrerPaiementPesee(db, {
+          caisseId: caisse.id,
+          peseeId: id,
+          volet: 'transport',
+          montant: pesee.montantTransport,
+          actor: { userId: currentUser.id, userNom: currentUser.nom },
+        });
+        if (mouvement) pushMouvement(mouvement).catch(() => {});
+      } else {
+        await togglePayeTransportRegimeRepo(db, id, paye, { userId: currentUser.id, userNom: currentUser.nom });
+        await annulerPaiementPesee(db, id, 'transport');
+        pushDeleteMouvementForPesee(id, 'transport').catch(() => {});
       }
       await refresh();
       const r = await pushPayeTransportPeseeStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
@@ -433,7 +463,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         Alert.alert('Synchro cloud échouée (statut paiement transport)', r.error ?? 'Erreur inconnue');
       }
     },
-    [db, refresh, currentUser, pesees, caisses]
+    [db, refresh, currentUser, pesees, resoudreCaisseCreateur]
   );
 
   const togglePayeVenteHuile = useCallback(
