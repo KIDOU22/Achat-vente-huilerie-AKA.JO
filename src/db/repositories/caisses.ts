@@ -453,6 +453,65 @@ export async function reparerPaiementsPeseesManquants(db: SQLiteDatabase): Promi
   return reparees;
 }
 
+// Symétrique de reparerPaiementsPeseesManquants ci-dessus : une pesée marquée
+// "impayé" localement (l'utilisateur a annulé le paiement) dont le mouvement de
+// caisse existe pourtant encore quelque part — parce que sa suppression a réussi en
+// local mais n'a jamais atteint Supabase (coupure réseau au moment précis de
+// l'annulation, avalée silencieusement) — reste comptée comme payée en Synthèse (qui
+// recalcule depuis les mouvements réels) alors qu'Historique affiche "impayé",
+// contredisant l'action de l'utilisateur. Supprime ces mouvements orphelins ; renvoie
+// les (peseeId, volet) concernés pour que l'appelant pousse aussi la suppression côté
+// cloud.
+export async function reparerMouvementsPeseesOrphelins(
+  db: SQLiteDatabase
+): Promise<Array<{ peseeId: string; volet: 'produit' | 'transport' }>> {
+  const rows = await db.getAllAsync<{ id: string; paye_regime: number; paye_transport: number }>(
+    'SELECT id, paye_regime, paye_transport FROM pesees WHERE annulee = 0'
+  );
+  const supprimes: Array<{ peseeId: string; volet: 'produit' | 'transport' }> = [];
+  for (const row of rows) {
+    for (const volet of ['produit', 'transport'] as const) {
+      const estPaye = volet === 'produit' ? row.paye_regime === 1 : row.paye_transport === 1;
+      if (estPaye) continue;
+      const existant = await db.getFirstAsync<{ id: string }>(
+        "SELECT id FROM mouvements_caisse WHERE pesee_id = ? AND type = 'depense' AND volet = ?",
+        row.id,
+        volet
+      );
+      if (!existant) continue;
+      await db.runAsync('DELETE FROM mouvements_caisse WHERE id = ?', existant.id);
+      supprimes.push({ peseeId: row.id, volet });
+    }
+  }
+  return supprimes;
+}
+
+// Même réparation que ci-dessus, pour les ventes (volet "produit" = huile, "transport"
+// = coût de transport) — voir reparerMouvementsPeseesOrphelins pour le mécanisme.
+export async function reparerMouvementsVentesOrphelins(
+  db: SQLiteDatabase
+): Promise<Array<{ venteId: string; volet: 'produit' | 'transport' }>> {
+  const rows = await db.getAllAsync<{ id: string; paye_huile: number; paye_transport: number }>(
+    'SELECT id, paye_huile, paye_transport FROM ventes WHERE annulee = 0'
+  );
+  const supprimes: Array<{ venteId: string; volet: 'produit' | 'transport' }> = [];
+  for (const row of rows) {
+    for (const volet of ['produit', 'transport'] as const) {
+      const estPaye = volet === 'produit' ? row.paye_huile === 1 : row.paye_transport === 1;
+      if (estPaye) continue;
+      const existant = await db.getFirstAsync<{ id: string }>(
+        'SELECT id FROM mouvements_caisse WHERE vente_id = ? AND volet = ?',
+        row.id,
+        volet
+      );
+      if (!existant) continue;
+      await db.runAsync('DELETE FROM mouvements_caisse WHERE id = ?', existant.id);
+      supprimes.push({ venteId: row.id, volet });
+    }
+  }
+  return supprimes;
+}
+
 // Une vente : le volet "produit" (huile) marqué "payé" crédite la caisse choisie par
 // le vendeur (recette) ; le volet "transport" marqué "payé" débite la caisse choisie
 // (dépense — c'est un coût, voir "prix de revient" dans l'écran Vente). Chaque volet

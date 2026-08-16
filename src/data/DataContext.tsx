@@ -45,6 +45,8 @@ import {
   listCaisses,
   listMouvements,
   reparerPaiementsPeseesManquants,
+  reparerMouvementsPeseesOrphelins,
+  reparerMouvementsVentesOrphelins,
   soldeCaisse,
 } from '../db/repositories/caisses';
 import { listUsers } from '../db/repositories/users';
@@ -297,6 +299,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const mouvementsRepares = await reparerPaiementsPeseesManquants(db);
       for (const m of mouvementsRepares) {
         pushMouvement(m).catch(() => {});
+      }
+      // Filet symétrique : une pesée/vente repassée à "impayé" dont le mouvement
+      // existe pourtant encore (suppression réussie en local mais jamais poussée vers
+      // Supabase, coupure réseau au moment de l'annulation) — Synthèse la comptait
+      // comme payée malgré Historique affichant "impayé".
+      const peseesOrphelines = await reparerMouvementsPeseesOrphelins(db);
+      for (const { peseeId, volet } of peseesOrphelines) {
+        pushDeleteMouvementForPesee(peseeId, volet).catch(() => {});
+      }
+      const ventesOrphelines = await reparerMouvementsVentesOrphelins(db);
+      for (const { venteId, volet } of ventesOrphelines) {
+        pushDeleteMouvementForVente(venteId, volet).catch(() => {});
       }
       if (!cancelled) await refreshRef.current();
     }
