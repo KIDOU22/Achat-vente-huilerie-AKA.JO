@@ -44,6 +44,7 @@ import {
   rejeterMouvement as rejeterMouvementRepo,
   listCaisses,
   listMouvements,
+  reparerPaiementsPeseesManquants,
   soldeCaisse,
 } from '../db/repositories/caisses';
 import { listUsers } from '../db/repositories/users';
@@ -279,6 +280,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const localCaissesAfter = await listCaisses(db);
       for (const c of localCaissesAfter) {
         pushCaisse(c).catch(() => {});
+      }
+      // Filet de sécurité : répare les pesées marquées "payé" dont le mouvement de
+      // caisse n'a jamais été créé (séquelle d'un bug déjà corrigé côté toggle, mais
+      // qui laisse les pesées déjà touchées bloquées sur "impayé" en Synthèse tant
+      // qu'elles n'ont pas été réparées) — désormais que les caisses viennent d'être
+      // synchronisées ci-dessus, la résolution a de bien meilleures chances d'aboutir.
+      const mouvementsRepares = await reparerPaiementsPeseesManquants(db);
+      for (const m of mouvementsRepares) {
+        pushMouvement(m).catch(() => {});
       }
       if (!cancelled) await refreshRef.current();
     }

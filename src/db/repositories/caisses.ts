@@ -394,6 +394,65 @@ export async function annulerPaiementPesee(
   await db.runAsync("DELETE FROM mouvements_caisse WHERE pesee_id = ? AND type = 'depense' AND volet = ?", peseeId, volet);
 }
 
+// Répare les pesées marquées "payé" (régime et/ou transport) dont le mouvement de
+// caisse correspondant n'a jamais été créé — séquelle d'un bug déjà corrigé dans
+// togglePayeRegime/togglePayeTransportRegime, où la résolution de la caisse du
+// créateur pouvait échouer silencieusement avant l'ajout d'une resynchronisation :
+// le statut "payé" était validé et synchronisé (visible dans Historique) sans que le
+// mouvement existe nulle part, ce qui laissait Synthèse (calculée depuis les
+// mouvements réels) bloquée sur "impayé" indéfiniment, même après la correction du
+// bug d'origine — celle-ci empêche seulement de NOUVELLES occurrences, elle ne
+// répare pas les pesées déjà touchées. Sans effet si la caisse du créateur reste
+// introuvable (retentée au prochain appel) ou si rien n'est à réparer.
+export async function reparerPaiementsPeseesManquants(db: SQLiteDatabase): Promise<MouvementCaisse[]> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    created_by: string;
+    montant: number;
+    montant_transport: number;
+    paye_regime: number;
+    paye_transport: number;
+  }>(
+    `SELECT id, created_by, montant, montant_transport, paye_regime, paye_transport
+     FROM pesees WHERE annulee = 0 AND (paye_regime = 1 OR paye_transport = 1)`
+  );
+  if (rows.length === 0) return [];
+
+  const reparees: MouvementCaisse[] = [];
+  for (const row of rows) {
+    for (const volet of ['produit', 'transport'] as const) {
+      const estPaye = volet === 'produit' ? row.paye_regime === 1 : row.paye_transport === 1;
+      if (!estPaye) continue;
+      const existant = await db.getFirstAsync<{ id: string }>(
+        "SELECT id FROM mouvements_caisse WHERE pesee_id = ? AND type = 'depense' AND volet = ?",
+        row.id,
+        volet
+      );
+      if (existant) continue;
+      const caisse = await db.getFirstAsync<{ id: string }>('SELECT id FROM caisses WHERE user_id = ?', row.created_by);
+      if (!caisse) continue;
+      const montant = volet === 'produit' ? row.montant : row.montant_transport;
+      const m = await insertMouvement(db, {
+        type: 'depense',
+        caisseFromId: caisse.id,
+        caisseToId: null,
+        montant,
+        motif:
+          volet === 'produit'
+            ? 'Paiement pesée — régime (réparation automatique)'
+            : 'Paiement pesée — transport (réparation automatique)',
+        statut: 'validee',
+        peseeId: row.id,
+        volet,
+        createdBy: 'reparation-auto',
+        createdByNom: 'Réparation automatique',
+      });
+      reparees.push(m);
+    }
+  }
+  return reparees;
+}
+
 // Une vente : le volet "produit" (huile) marqué "payé" crédite la caisse choisie par
 // le vendeur (recette) ; le volet "transport" marqué "payé" débite la caisse choisie
 // (dépense — c'est un coût, voir "prix de revient" dans l'écran Vente). Chaque volet
