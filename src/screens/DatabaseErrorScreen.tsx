@@ -8,7 +8,6 @@ import { fonts } from '../theme/typography';
 
 interface Props {
   error: Error;
-  resetting: boolean;
   onReset: () => void;
 }
 
@@ -18,7 +17,7 @@ interface Props {
 // (perte des données locales pas encore synchronisées). Affiche l'erreur réelle et
 // permet de repartir d'une base locale vide sans quitter l'app : les données déjà
 // envoyées au cloud reviendront à la prochaine synchronisation.
-export function DatabaseErrorScreen({ error, resetting, onReset }: Props) {
+export function DatabaseErrorScreen({ error, onReset }: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -39,7 +38,7 @@ export function DatabaseErrorScreen({ error, resetting, onReset }: Props) {
         <Text style={styles.errorText}>{error.message || String(error)}</Text>
       </View>
 
-      <Button label="Réinitialiser la base locale" onPress={onReset} loading={resetting} style={styles.button} />
+      <Button label="Réinitialiser la base locale" onPress={onReset} style={styles.button} />
     </ScrollView>
   );
 }

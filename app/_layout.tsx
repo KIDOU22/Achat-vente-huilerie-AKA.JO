@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { deleteDatabaseAsync, SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider } from 'expo-sqlite';
 import React, { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,10 +18,16 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 export default function RootLayout() {
   const { fontsLoaded, fontsError } = useAppFonts();
   const [dbError, setDbError] = useState<Error | null>(null);
-  const [resetting, setResetting] = useState(false);
-  // Change de clé pour forcer un nouveau montage de <SQLiteProvider> après une
-  // réinitialisation, sans quoi il resterait bloqué sur son état d'erreur figé.
-  const [providerKey, setProviderKey] = useState(0);
+  // Après un échec d'ouverture/migration, expo-sqlite garde le fichier verrouillé par
+  // une connexion native ouverte mais jamais refermée (elle n'est fermée que si
+  // onInit réussit — voir son code source) : rien côté JS ne permet plus de la
+  // libérer. Essayer de SUPPRIMER ce même fichier (deleteDatabaseAsync) pouvait donc
+  // rester bloqué indéfiniment en attendant un verrou qui ne se libère jamais — le
+  // bouton "Réinitialiser" restait figé sans aucun message. Solution : ne plus
+  // toucher au fichier bloqué, ouvrir un nouveau fichier vide sous un autre nom.
+  // L'ancien reste orphelin sur le disque (quelques Ko, sans conséquence).
+  const [resetCount, setResetCount] = useState(0);
+  const databaseName = resetCount === 0 ? DATABASE_NAME : `${DATABASE_NAME}.reset${resetCount}`;
 
   const initDatabase = useCallback(async (db: SQLiteDatabase) => {
     await migrate(db);
@@ -35,12 +41,9 @@ export default function RootLayout() {
     if (dbError) SplashScreen.hideAsync().catch(() => {});
   }, [dbError]);
 
-  const handleReset = useCallback(async () => {
-    setResetting(true);
-    await deleteDatabaseAsync(DATABASE_NAME).catch(() => {});
+  const handleReset = useCallback(() => {
     setDbError(null);
-    setResetting(false);
-    setProviderKey((k) => k + 1);
+    setResetCount((k) => k + 1);
   }, []);
 
   if (!fontsLoaded && !fontsError) {
@@ -51,7 +54,7 @@ export default function RootLayout() {
     return (
       <SafeAreaProvider>
         <StatusBar style="light" />
-        <DatabaseErrorScreen error={dbError} resetting={resetting} onReset={handleReset} />
+        <DatabaseErrorScreen error={dbError} onReset={handleReset} />
       </SafeAreaProvider>
     );
   }
@@ -59,7 +62,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <SQLiteProvider key={providerKey} databaseName={DATABASE_NAME} onInit={initDatabase} onError={setDbError}>
+      <SQLiteProvider key={databaseName} databaseName={databaseName} onInit={initDatabase} onError={setDbError}>
         <AuthProvider>
           <AuthGate />
         </AuthProvider>
