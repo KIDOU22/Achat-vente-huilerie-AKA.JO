@@ -238,23 +238,33 @@ async function pullCaisses(db: SQLiteDatabase): Promise<void> {
   const remoteIds = new Set<string>();
   for (const row of data) {
     remoteIds.add(row.id);
-    const localUser = row.owner_identifiant
-      ? await db.getFirstAsync<{ id: string }>(
-          'SELECT id FROM users WHERE lower(identifiant) = lower(?)',
-          row.owner_identifiant
-        )
-      : null;
-    await db.runAsync(
-      `INSERT INTO caisses (id, type, user_id, owner_identifiant, created_at) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         owner_identifiant = excluded.owner_identifiant,
-         user_id = COALESCE(excluded.user_id, caisses.user_id)`,
-      row.id,
-      row.type,
-      localUser?.id ?? null,
-      row.owner_identifiant,
-      new Date(row.created_at).getTime()
-    );
+    // Une ligne isolée malformée (héritage d'un vieux doublon, d'une fusion passée...)
+    // ne doit jamais interrompre le reste du tirage : pullAll est séquentiel — une
+    // exception ici remonterait jusqu'à son try/catch global et annulerait TOUT ce qui
+    // suit (mouvements_caisse, puis la fusion des doublons), pour tout le monde, alors
+    // que les pesées/ventes tirées juste avant auraient déjà été enregistrées — cause
+    // plausible d'une synchro "achats OK mais caisses jamais à jour".
+    try {
+      const localUser = row.owner_identifiant
+        ? await db.getFirstAsync<{ id: string }>(
+            'SELECT id FROM users WHERE lower(identifiant) = lower(?)',
+            row.owner_identifiant
+          )
+        : null;
+      await db.runAsync(
+        `INSERT INTO caisses (id, type, user_id, owner_identifiant, created_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           owner_identifiant = excluded.owner_identifiant,
+           user_id = COALESCE(excluded.user_id, caisses.user_id)`,
+        row.id,
+        row.type,
+        localUser?.id ?? null,
+        row.owner_identifiant,
+        new Date(row.created_at).getTime()
+      );
+    } catch (err) {
+      console.warn('[sync] pullCaisses : ligne ignorée', row.id, err);
+    }
   }
   // Une caisse fusionnée/supprimée côté Supabase (voir fusionnerCaissesUniquesEnDouble)
   // doit aussi disparaître ici — sinon la prochaine repousse automatique de cet
@@ -272,33 +282,40 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
   const { data, error } = await supabase.from('mouvements_caisse').select('*');
   if (error || !data) return;
   for (const row of data) {
-    await db.runAsync(
-      `INSERT INTO mouvements_caisse
-         (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, partenaire_id, volet, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         statut = excluded.statut, validated_by = excluded.validated_by,
-         validated_by_nom = excluded.validated_by_nom, validated_at = excluded.validated_at,
-         caisse_from_id = excluded.caisse_from_id, caisse_to_id = excluded.caisse_to_id,
-         montant = excluded.montant, volet = excluded.volet, partenaire_id = excluded.partenaire_id`,
-      row.id,
-      row.type,
-      row.caisse_from_id,
-      row.caisse_to_id,
-      row.montant,
-      row.motif,
-      row.statut,
-      row.pesee_id,
-      row.vente_id,
-      row.partenaire_id,
-      row.volet,
-      row.created_by,
-      row.created_by_nom,
-      row.validated_by,
-      row.validated_by_nom,
-      new Date(row.ts).getTime(),
-      row.validated_at ? new Date(row.validated_at).getTime() : null
-    );
+    // Voir le commentaire équivalent dans pullCaisses ci-dessus : une ligne isolée
+    // malformée ne doit jamais faire échouer tout le reste du tirage pour tout le
+    // monde.
+    try {
+      await db.runAsync(
+        `INSERT INTO mouvements_caisse
+           (id, type, caisse_from_id, caisse_to_id, montant, motif, statut, pesee_id, vente_id, partenaire_id, volet, created_by, created_by_nom, validated_by, validated_by_nom, ts, validated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           statut = excluded.statut, validated_by = excluded.validated_by,
+           validated_by_nom = excluded.validated_by_nom, validated_at = excluded.validated_at,
+           caisse_from_id = excluded.caisse_from_id, caisse_to_id = excluded.caisse_to_id,
+           montant = excluded.montant, volet = excluded.volet, partenaire_id = excluded.partenaire_id`,
+        row.id,
+        row.type,
+        row.caisse_from_id,
+        row.caisse_to_id,
+        row.montant,
+        row.motif,
+        row.statut,
+        row.pesee_id,
+        row.vente_id,
+        row.partenaire_id,
+        row.volet,
+        row.created_by,
+        row.created_by_nom,
+        row.validated_by,
+        row.validated_by_nom,
+        new Date(row.ts).getTime(),
+        row.validated_at ? new Date(row.validated_at).getTime() : null
+      );
+    } catch (err) {
+      console.warn('[sync] pullMouvements : ligne ignorée', row.id, err);
+    }
   }
 }
 
