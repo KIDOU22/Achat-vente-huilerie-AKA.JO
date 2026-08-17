@@ -170,6 +170,39 @@ export async function ensureCaisseForUser(db: SQLiteDatabase, userId: string, id
   return { id, type: 'secondaire', userId, ownerIdentifiant, createdAt };
 }
 
+// Filet de sécurité : crée la caisse "secondaire" manquante de TOUT compte connu
+// localement (pas seulement l'utilisateur courant, contrairement à
+// ensureCaisseForUser ci-dessus) — une caisse ne dépend que de l'identifiant de son
+// propriétaire, pas d'une session cloud fonctionnelle POUR LUI. Un agent qui n'a
+// jamais eu de session qui marche (même symptôme que Donald/Sandra en début de
+// pilote) n'aurait sinon jamais de caisse créée nulle part : impossible pour
+// n'importe quel appareil de marquer un de ses paiements, quel que soit celui qui
+// s'y connecte. Tourne depuis n'importe quel appareil qui a, lui, une session
+// valide — n'exige que d'être authentifié, pas gérant (voir caisses_insert). Sans
+// effet si rien à créer.
+export async function ensureCaissesPourTousLesComptes(db: SQLiteDatabase): Promise<Caisse[]> {
+  const comptes = await db.getAllAsync<{ identifiant: string }>('SELECT identifiant FROM users WHERE actif = 1');
+  const manquantes: Caisse[] = [];
+  for (const { identifiant } of comptes) {
+    const ownerIdentifiant = identifiant.trim().toLowerCase();
+    const existante = await db.getFirstAsync<{ id: string }>(
+      "SELECT id FROM caisses WHERE type = 'secondaire' AND lower(owner_identifiant) = ?",
+      ownerIdentifiant
+    );
+    if (existante) continue;
+    const id = uid();
+    const createdAt = Date.now();
+    await db.runAsync(
+      "INSERT INTO caisses (id, type, user_id, owner_identifiant, created_at) VALUES (?, 'secondaire', NULL, ?, ?)",
+      id,
+      ownerIdentifiant,
+      createdAt
+    );
+    manquantes.push({ id, type: 'secondaire', userId: null, ownerIdentifiant, createdAt });
+  }
+  return manquantes;
+}
+
 // Filet de sécurité pour les caisses "singleton" (principale, banque), à appeler
 // UNIQUEMENT après un tirage (pull) réussi — jamais avant, sinon un appareil qui
 // vient d'être vidé croirait à tort qu'elles n'existent pas encore et en créerait de

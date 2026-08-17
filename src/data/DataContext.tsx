@@ -37,6 +37,7 @@ import {
   annulerPaiementVente,
   annulerPaiementPesee,
   ensureCaisseForUser,
+  ensureCaissesPourTousLesComptes,
   ensureSingletonCaisses,
   initierRetour as initierRetourRepo,
   initierTransfert as initierTransfertRepo,
@@ -287,6 +288,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         await ensureCaisseForUser(db, user.id, user.identifiant);
       }
+      // Filet de sécurité pour tout AUTRE compte connu localement (pas seulement
+      // l'utilisateur courant) qui n'a jamais eu de caisse créée nulle part — voir le
+      // commentaire de la fonction. Peut créer des lignes pour des comptes qui ne se
+      // sont jamais connectés sur cet appareil, c'est voulu.
+      await ensureCaissesPourTousLesComptes(db);
       const localCaissesAfter = await listCaisses(db);
       for (const c of localCaissesAfter) {
         pushCaisse(c).catch(() => {});
