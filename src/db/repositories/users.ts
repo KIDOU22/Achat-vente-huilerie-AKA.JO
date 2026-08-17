@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { hashCode, verifyCode } from '../../auth/crypto';
 import { uid } from '../../domain/format';
 import type { Role, User } from '../../domain/types';
+import { ensureCaisseForUser } from './caisses';
 
 interface UserRow {
   id: string;
@@ -135,6 +136,13 @@ export async function changerIdentifiantEtCode(
   // La caisse de l'utilisateur garde une copie de l'identifiant (nécessaire pour la
   // synchro cloud, voir owner_identifiant) — doit rester alignée après ce changement.
   await db.runAsync('UPDATE caisses SET owner_identifiant = ? WHERE user_id = ?', input.identifiant.trim().toLowerCase(), userId);
+  // Garantit qu'une caisse existe bien sous le NOUVEL identifiant, même si aucune
+  // n'était liée localement à cet utilisateur (le UPDATE juste au-dessus ne fait
+  // alors rien) — un compte réinitialisé plusieurs fois se retrouvait sinon avec des
+  // caisses orphelines sous ses anciens identifiants et aucune sous l'actuel : plus
+  // personne ne pouvait résoudre sa caisse pour marquer un de ses paiements, sur
+  // aucun appareil, tant qu'une réparation manuelle n'était pas relancée.
+  await ensureCaisseForUser(db, userId, input.identifiant);
   const user = await getUserById(db, userId);
   if (!user) return { error: 'Utilisateur introuvable.' };
   return user;
@@ -159,6 +167,8 @@ export async function reinitialiserAcces(
     userId
   );
   await db.runAsync('UPDATE caisses SET owner_identifiant = ? WHERE user_id = ?', input.identifiant.trim().toLowerCase(), userId);
+  // Voir le commentaire équivalent dans changerIdentifiantEtCode ci-dessus.
+  await ensureCaisseForUser(db, userId, input.identifiant);
   const user = await getUserById(db, userId);
   if (!user) return { error: 'Utilisateur introuvable.' };
   return user;
