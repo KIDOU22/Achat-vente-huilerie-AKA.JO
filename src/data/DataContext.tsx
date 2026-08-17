@@ -50,7 +50,7 @@ import {
   reparerMouvementsVentesOrphelins,
   soldeCaisse,
 } from '../db/repositories/caisses';
-import { listUsers } from '../db/repositories/users';
+import { getUserById, listUsers } from '../db/repositories/users';
 import type { Caisse, MouvementCaisse, Partenaire, Pesee, Vente } from '../domain/types';
 import { supabase } from '../lib/supabase';
 import { pullAll } from '../sync/pull';
@@ -419,13 +419,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // en laissant passer le statut "payé" : Historique (qui lit juste le drapeau)
   // affichait payé, Synthèse (qui recalcule depuis les mouvements réels) restait
   // impayée indéfiniment.
+  //
+  // Recherche par IDENTIFIANT (via caisse.ownerIdentifiant), jamais par userId local :
+  // le lien caisse.userId n'est renseigné que si l'appareil courant avait déjà ce
+  // compte dans sa table users AU MOMENT PRÉCIS où cette caisse a été tirée depuis
+  // Supabase (pullCaisses résout owner_identifiant → userId local à cet instant-là,
+  // COALESCE ne le corrige jamais après coup si ça a raté une fois). Un agent
+  // fraîchement créé, ou juste réparé par ensureCaissesPourTousLesComptes, se
+  // retrouvait donc introuvable indéfiniment même après une resynchronisation
+  // réussie — alors que la caisse existait bel et bien, correctement identifiée par
+  // son owner_identifiant.
   const resoudreCaisseCreateur = useCallback(
     async (createdBy: string): Promise<Caisse | undefined> => {
-      const locale = caisses.find((c) => c.userId === createdBy);
+      const parIdentifiant = async (): Promise<Caisse | undefined> => {
+        const createur = await getUserById(db, createdBy);
+        if (!createur) return undefined;
+        const identifiant = createur.identifiant.trim().toLowerCase();
+        const toutes = await listCaisses(db);
+        return toutes.find((c) => c.ownerIdentifiant?.trim().toLowerCase() === identifiant);
+      };
+
+      const locale = caisses.find((c) => c.userId === createdBy) ?? (await parIdentifiant());
       if (locale) return locale;
       await pullAll(db).catch(() => {});
-      const fraiches = await listCaisses(db);
-      return fraiches.find((c) => c.userId === createdBy);
+      return parIdentifiant();
     },
     [db, caisses]
   );

@@ -462,7 +462,16 @@ export async function reparerPaiementsPeseesManquants(db: SQLiteDatabase): Promi
         volet
       );
       if (existant) continue;
-      const caisse = await db.getFirstAsync<{ id: string }>('SELECT id FROM caisses WHERE user_id = ?', row.created_by);
+      // Par identifiant (via caisses.owner_identifiant), jamais par user_id : ce lien
+      // local n'est renseigné que si cet appareil avait déjà le compte du créateur
+      // dans sa table users au moment précis où sa caisse a été tirée depuis Supabase
+      // — un agent fraîchement réparé (voir ensureCaissesPourTousLesComptes) restait
+      // sinon introuvable indéfiniment malgré une caisse bien existante.
+      const caisse = await db.getFirstAsync<{ id: string }>(
+        `SELECT c.id FROM caisses c, users u
+         WHERE u.id = ? AND lower(trim(c.owner_identifiant)) = lower(trim(u.identifiant))`,
+        row.created_by
+      );
       if (!caisse) continue;
       const montant = volet === 'produit' ? row.montant : row.montant_transport;
       const m = await insertMouvement(db, {
