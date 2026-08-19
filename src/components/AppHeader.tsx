@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
-import { Lock, LogOut, UserCog } from 'lucide-react-native';
-import React, { useMemo } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Lock, LogOut, RefreshCw, UserCog } from 'lucide-react-native';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Alert, Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { useAppData } from '../data/DataContext';
@@ -14,9 +14,30 @@ const logo = require('../../assets/images/logo-akajo.png');
 
 export function AppHeader() {
   const { currentUser, isElevated, logout } = useAuth();
-  const { pesees, ventes } = useAppData();
+  const { pesees, ventes, syncing, synchroniserMaintenant } = useAppData();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  const rotation = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!syncing) {
+      rotation.setValue(0);
+      return;
+    }
+    const anim = Animated.loop(
+      Animated.timing(rotation, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [syncing, rotation]);
+  const rotateStyle = {
+    transform: [{ rotate: rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
+  };
+
+  async function handleSync() {
+    const r = await synchroniserMaintenant();
+    Alert.alert(r.ok ? 'Synchronisation' : 'Synchronisation échouée', r.message);
+  }
 
   const today = todayKey();
   const todayPesees = useMemo(
@@ -53,6 +74,11 @@ export function AppHeader() {
           <RoleBadge role={currentUser.role} />
         </View>
         <View style={styles.actions}>
+          <Pressable onPress={handleSync} disabled={syncing} hitSlop={10}>
+            <Animated.View style={rotateStyle}>
+              <RefreshCw size={18} color={syncing ? colors.onBackgroundFaint : colors.onBackgroundMuted} />
+            </Animated.View>
+          </Pressable>
           {isElevated && (
             <Pressable onPress={() => router.push('/comptes')} hitSlop={10}>
               <UserCog size={18} color={colors.onBackgroundMuted} />

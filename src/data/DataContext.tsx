@@ -73,6 +73,14 @@ import {
 } from '../sync/push';
 import { subscribeRealtime } from '../sync/realtime';
 
+// idsDistants null = le tirage a échoué (hors-ligne ?) : par prudence, ne rien
+// repousser plutôt que de risquer d'écraser un changement distant qu'on n'a pas pu
+// vérifier.
+function jamaisEncoreSynchronises<T extends { id: string }>(locaux: T[], idsDistants: Set<string> | null): T[] {
+  if (!idsDistants) return [];
+  return locaux.filter((x) => !idsDistants.has(x.id));
+}
+
 interface DataContextValue {
   partenaires: Partenaire[];
   pesees: Pesee[];
@@ -84,7 +92,9 @@ interface DataContextValue {
   prixLitre: string;
   prixTransportRegime: string;
   loading: boolean;
+  syncing: boolean;
   refresh: () => Promise<void>;
+  synchroniserMaintenant: () => Promise<{ ok: boolean; message: string }>;
   addPartenaire: (input: CreatePartenaireInput) => Promise<Partenaire>;
   supprimerPartenaire: (id: string) => Promise<void>;
   enregistrerPesee: (input: Omit<CreatePeseeInput, 'userId' | 'userNom' | 'chauffeurNom'>) => Promise<Pesee>;
@@ -164,20 +174,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Synchronisation cloud : tire les données distantes au démarrage et à chaque
   // connexion, puis reste à l'écoute des changements en temps réel (Realtime) pour
-  // que le téléphone du Gérant reflète automatiquement les saisies des agents.
+  // que le téléphone du Gérant reflète automatiquement les saisies des agents. Les
+  // fonctions ci-dessous vivent au niveau du composant (pas dans le useEffect qui les
+  // met en route) pour pouvoir aussi être déclenchées à la demande par
+  // synchroniserMaintenant() (bouton "Synchroniser") — jusqu'ici seul un redémarrage
+  // complet de l'app (ou une connexion) relançait les réparations automatiques.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const currentUserRef = useRef(currentUser);
   currentUserRef.current = currentUser;
+  const cancelledRef = useRef(false);
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
+  const [syncing, setSyncing] = useState(false);
 
-  // Filet de sécurité hors-ligne uniquement : sans Supabase configuré, l'effet de
-  // synchro ci-dessous ne s'exécute jamais (voir son premier `if (!supabase) return`)
-  // — c'est donc ici qu'on garantit qu'un utilisateur connecté a toujours une caisse
-  // locale. Avec Supabase, cette même garantie est assurée dans fullSync() ci-dessous,
-  // et UNIQUEMENT là : la lancer aussi ici créerait une course avec le premier tirage
-  // (pullCaisses) — sur un appareil qui vient de se connecter, sa caisse existe peut-
-  // être déjà côté cloud mais n'a pas encore eu le temps d'être rapatriée localement ;
-  // conclure trop tôt qu'elle "n'existe pas" en créerait un doublon.
+  // Filet de sécurité hors-ligne uniquement : sans Supabase configuré, fullSync()
+  // n'est jamais appelée (voir son premier `if (!supabase) return`) — c'est donc ici
+  // qu'on garantit qu'un utilisateur connecté a toujours une caisse locale. Avec
+  // Supabase, cette même garantie est assurée dans fullSync(), et UNIQUEMENT là : la
+  // lancer aussi ici créerait une course avec le premier tirage (pullCaisses) — sur
+  // un appareil qui vient de se connecter, sa caisse existe peut-être déjà côté cloud
+  // mais n'a pas encore eu le temps d'être rapatriée localement ; conclure trop tôt
+  // qu'elle "n'existe pas" en créerait un doublon.
   useEffect(() => {
     if (supabase) return;
     if (!currentUser) return;
@@ -187,139 +208,133 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [db, currentUser, refresh]);
 
-  useEffect(() => {
+  // Rattrape les entités jamais explicitement "créées" par l'utilisateur (caisses/
+  // partenaires de démo depuis seedIfEmpty) et toute pesée/vente restée bloquée après
+  // un échec d'envoi passé (panne réseau, contrainte serveur temporairement
+  // invalide...) qui n'aurait jamais été réessayée autrement. La repousse des comptes
+  // (pushUser) n'aboutit que depuis une session gérant (RLS) — depuis un autre rôle,
+  // elle échoue silencieusement sans conséquence : seul le gérant fait autorité sur
+  // les comptes.
+  // IMPORTANT : ne repousse QUE les lignes absentes de Supabase (jamais encore
+  // synchronisées) — jamais une ligne qui y existe déjà. pushPesee/pushVente font un
+  // upsert de la ligne ENTIÈRE (dernier écrivain gagne) : si cet appareil n'a pas
+  // encore tiré un changement fait ailleurs (ex: une pesée marquée payée sur le
+  // téléphone du gérant), sa copie locale est en retard sur ce champ précis —
+  // repousser quand même sa version entière effacerait ce changement distant plus
+  // récent, qui ne reviendrait qu'au prochain tirage, en apparence "annulé après
+  // quelques minutes" (le statut payé notamment). Les changements sur une ligne déjà
+  // connue de Supabase passent par des mises à jour ciblées ailleurs dans ce fichier
+  // (pushPayeRegimeStatus, pushMouvementStatus...), jamais par ici.
+  // Un upsert déclenche un événement Realtime même quand la valeur envoyée est
+  // identique à celle déjà en base (c'est une commande UPDATE, peu importe si ça
+  // change quelque chose) — appeler cette fonction à chaque événement Realtime
+  // créerait donc une boucle infinie (chaque repousse déclenchant l'événement qui
+  // déclenche la repousse suivante), provoquant un clignotement continu de
+  // l'affichage. Elle ne doit donc JAMAIS être appelée par le gestionnaire
+  // d'événements Realtime — seulement au démarrage, à la connexion, à intervalle
+  // régulier, et par le bouton "Synchroniser".
+  const pushPending = useCallback(async () => {
     if (!supabase) return;
-    let cancelled = false;
-    let unsubscribeRealtime: (() => void) | undefined;
-
-    // Rattrape les entités jamais explicitement "créées" par l'utilisateur (caisses/
-    // partenaires de démo depuis seedIfEmpty) et toute pesée/vente restée bloquée
-    // après un échec d'envoi passé (panne réseau, contrainte serveur temporairement
-    // invalide...) qui n'aurait jamais été réessayée autrement. La repousse des
-    // comptes (pushUser) n'aboutit que depuis une session gérant (RLS) — depuis un
-    // autre rôle, elle échoue silencieusement sans conséquence : seul le gérant fait
-    // autorité sur les comptes.
-    // IMPORTANT : ne repousse QUE les lignes absentes de Supabase (jamais encore
-    // synchronisées) — jamais une ligne qui y existe déjà. pushPesee/pushVente font
-    // un upsert de la ligne ENTIÈRE (dernier écrivain gagne) : si cet appareil n'a
-    // pas encore tiré un changement fait ailleurs (ex: une pesée marquée payée sur le
-    // téléphone du gérant), sa copie locale est en retard sur ce champ précis —
-    // repousser quand même sa version entière effacerait ce changement distant plus
-    // récent, qui ne reviendrait qu'au prochain tirage, en apparence "annulé après
-    // quelques minutes" (le statut payé notamment). Les changements sur une ligne
-    // déjà connue de Supabase passent par des mises à jour ciblées ailleurs dans ce
-    // fichier (pushPayeRegimeStatus, pushMouvementStatus...), jamais par ici.
-    // Un upsert déclenche un événement Realtime même quand la valeur envoyée est
-    // identique à celle déjà en base (c'est une commande UPDATE, peu importe si ça
-    // change quelque chose) — appeler cette fonction à chaque événement Realtime
-    // créerait donc une boucle infinie (chaque repousse déclenchant l'événement qui
-    // déclenche la repousse suivante), provoquant un clignotement continu de
-    // l'affichage. Elle ne doit donc JAMAIS être appelée par le gestionnaire
-    // d'événements Realtime ci-dessous — seulement au démarrage, à la connexion, et à
-    // intervalle régulier.
-    async function fetchRemoteIds(table: string): Promise<Set<string> | null> {
+    const fetchRemoteIds = async (table: string): Promise<Set<string> | null> => {
       if (!supabase) return null;
       const { data, error } = await supabase.from(table).select('id');
       if (error || !data) return null;
       return new Set(data.map((r: { id: string }) => r.id));
-    }
+    };
+    const [localCaisses, localPartenaires, localPesees, localVentes, localUsers] = await Promise.all([
+      listCaisses(db),
+      listPartenaires(db),
+      listPesees(db),
+      listVentes(db),
+      listUsers(db),
+    ]);
+    const [remoteCaisseIds, remotePartenaireIds, remotePeseeIds, remoteVenteIds, remoteUserIds] = await Promise.all([
+      fetchRemoteIds('caisses'),
+      fetchRemoteIds('planteurs'),
+      fetchRemoteIds('pesees'),
+      fetchRemoteIds('ventes'),
+      fetchRemoteIds('local_accounts'),
+    ]);
+    await Promise.all([
+      ...jamaisEncoreSynchronises(localCaisses, remoteCaisseIds).map((c) => pushCaisse(c).catch(() => {})),
+      ...jamaisEncoreSynchronises(localPartenaires, remotePartenaireIds).map((p) => pushPartenaire(p).catch(() => {})),
+      ...jamaisEncoreSynchronises(localPesees, remotePeseeIds).map((t) => pushPesee(t).catch(() => {})),
+      ...jamaisEncoreSynchronises(localVentes, remoteVenteIds).map((v) => pushVente(v).catch(() => {})),
+      ...jamaisEncoreSynchronises(localUsers, remoteUserIds).map((u) => pushUser(u).catch(() => {})),
+    ]);
+  }, [db]);
 
-    function jamaisEncoreSynchronises<T extends { id: string }>(locaux: T[], idsDistants: Set<string> | null): T[] {
-      // idsDistants null = le tirage a échoué (hors-ligne ?) : par prudence, ne rien
-      // repousser plutôt que de risquer d'écraser un changement distant qu'on n'a pas
-      // pu vérifier.
-      if (!idsDistants) return [];
-      return locaux.filter((x) => !idsDistants.has(x.id));
-    }
+  // Ne fait que tirer (jamais d'écriture) — sûr à appeler aussi souvent que Realtime
+  // le déclenche, puisque ça ne peut jamais provoquer un nouvel événement. Renvoie si
+  // le tirage a réellement eu lieu (voir pullAll) — fullSync s'en sert pour ne jamais
+  // fabriquer de caisse sur la foi d'un pull qui n'a rien pu faire.
+  const pullAndRefresh = useCallback(async (): Promise<boolean> => {
+    const pulled = await pullAll(db);
+    if (!cancelledRef.current) await refreshRef.current();
+    return pulled;
+  }, [db]);
 
-    async function pushPending() {
-      const [localCaisses, localPartenaires, localPesees, localVentes, localUsers] = await Promise.all([
-        listCaisses(db),
-        listPartenaires(db),
-        listPesees(db),
-        listVentes(db),
-        listUsers(db),
-      ]);
-      const [remoteCaisseIds, remotePartenaireIds, remotePeseeIds, remoteVenteIds, remoteUserIds] = await Promise.all([
-        fetchRemoteIds('caisses'),
-        fetchRemoteIds('planteurs'),
-        fetchRemoteIds('pesees'),
-        fetchRemoteIds('ventes'),
-        fetchRemoteIds('local_accounts'),
-      ]);
-      await Promise.all([
-        ...jamaisEncoreSynchronises(localCaisses, remoteCaisseIds).map((c) => pushCaisse(c).catch(() => {})),
-        ...jamaisEncoreSynchronises(localPartenaires, remotePartenaireIds).map((p) => pushPartenaire(p).catch(() => {})),
-        ...jamaisEncoreSynchronises(localPesees, remotePeseeIds).map((t) => pushPesee(t).catch(() => {})),
-        ...jamaisEncoreSynchronises(localVentes, remoteVenteIds).map((v) => pushVente(v).catch(() => {})),
-        ...jamaisEncoreSynchronises(localUsers, remoteUserIds).map((u) => pushUser(u).catch(() => {})),
-      ]);
+  // Important : la repousse doit se terminer AVANT le pull — sinon un changement
+  // local tout juste effectué (ex: pointer une pesée comme payée) mais pas encore
+  // arrivé sur Supabase se ferait écraser par la valeur distante encore ancienne que
+  // le pull vient de rapatrier, et redeviendrait "impayé" jusqu'au prochain cycle.
+  // Renvoie si un tirage complet a bien pu s'exécuter (false = hors-ligne/session
+  // absente) — le bouton "Synchroniser" s'en sert pour donner un retour honnête.
+  const fullSync = useCallback(async (): Promise<boolean> => {
+    if (!supabase) return false;
+    await pushPending().catch(() => {});
+    const pulled = await pullAndRefresh();
+    // Uniquement APRÈS un pull qui a RÉELLEMENT eu lieu (pas juste tenté) : une
+    // caisse (la mienne, ou la principale/banque) existant déjà côté cloud vient
+    // d'être rapatriée localement si besoin — conclure à une caisse manquante sans
+    // certitude que le pull a pu s'exécuter (pas encore de session juste après une
+    // connexion, coupure réseau...) en créerait un doublon dans le cloud à chaque
+    // fois. C'est exactement ce qui a fait accumuler des dizaines de caisses
+    // "banque"/"principale" fantômes en pratique — voir la migration
+    // 0019_dedup_caisses_singleton.sql pour le nettoyage déjà effectué.
+    if (!pulled) return false;
+    await ensureSingletonCaisses(db);
+    const user = currentUserRef.current;
+    if (user) {
+      await ensureCaisseForUser(db, user.id, user.identifiant);
     }
+    // Filet de sécurité pour tout AUTRE compte connu localement (pas seulement
+    // l'utilisateur courant) qui n'a jamais eu de caisse créée nulle part — voir le
+    // commentaire de la fonction. Peut créer des lignes pour des comptes qui ne se
+    // sont jamais connectés sur cet appareil, c'est voulu.
+    await ensureCaissesPourTousLesComptes(db);
+    const localCaissesAfter = await listCaisses(db);
+    for (const c of localCaissesAfter) {
+      pushCaisse(c).catch(() => {});
+    }
+    // Filet de sécurité : répare les pesées marquées "payé" dont le mouvement de
+    // caisse n'a jamais été créé (séquelle d'un bug déjà corrigé côté toggle, mais
+    // qui laisse les pesées déjà touchées bloquées sur "impayé" en Synthèse tant
+    // qu'elles n'ont pas été réparées) — désormais que les caisses viennent d'être
+    // synchronisées ci-dessus, la résolution a de bien meilleures chances d'aboutir.
+    const mouvementsRepares = await reparerPaiementsPeseesManquants(db);
+    for (const m of mouvementsRepares) {
+      pushMouvement(m).catch(() => {});
+    }
+    // Filet symétrique : une pesée/vente repassée à "impayé" dont le mouvement existe
+    // pourtant encore (suppression réussie en local mais jamais poussée vers
+    // Supabase, coupure réseau au moment de l'annulation) — Synthèse la comptait
+    // comme payée malgré Historique affichant "impayé".
+    const peseesOrphelines = await reparerMouvementsPeseesOrphelins(db);
+    for (const { peseeId, volet } of peseesOrphelines) {
+      pushDeleteMouvementForPesee(peseeId, volet).catch(() => {});
+    }
+    const ventesOrphelines = await reparerMouvementsVentesOrphelins(db);
+    for (const { venteId, volet } of ventesOrphelines) {
+      pushDeleteMouvementForVente(venteId, volet).catch(() => {});
+    }
+    if (!cancelledRef.current) await refreshRef.current();
+    return true;
+  }, [db, pushPending, pullAndRefresh]);
 
-    // Ne fait que tirer (jamais d'écriture) — sûr à appeler aussi souvent que
-    // Realtime le déclenche, puisque ça ne peut jamais provoquer un nouvel événement.
-    // Renvoie si le tirage a réellement eu lieu (voir pullAll) — fullSync s'en sert
-    // pour ne jamais fabriquer de caisse sur la foi d'un pull qui n'a rien pu faire.
-    async function pullAndRefresh(): Promise<boolean> {
-      const pulled = await pullAll(db);
-      if (!cancelled) await refreshRef.current();
-      return pulled;
-    }
-
-    // Important : la repousse doit se terminer AVANT le pull — sinon un changement
-    // local tout juste effectué (ex: pointer une pesée comme payée) mais pas encore
-    // arrivé sur Supabase se ferait écraser par la valeur distante encore ancienne
-    // que le pull vient de rapatrier, et redeviendrait "impayé" jusqu'au prochain
-    // cycle.
-    async function fullSync() {
-      await pushPending().catch(() => {});
-      const pulled = await pullAndRefresh();
-      // Uniquement APRÈS un pull qui a RÉELLEMENT eu lieu (pas juste tenté) : une
-      // caisse (la mienne, ou la principale/banque) existant déjà côté cloud vient
-      // d'être rapatriée localement si besoin — conclure à une caisse manquante sans
-      // certitude que le pull a pu s'exécuter (pas encore de session juste après une
-      // connexion, coupure réseau...) en créerait un doublon dans le cloud à chaque
-      // fois. C'est exactement ce qui a fait accumuler des dizaines de caisses
-      // "banque"/"principale" fantômes en pratique — voir la migration
-      // 0019_dedup_caisses_singleton.sql pour le nettoyage déjà effectué.
-      if (!pulled) return;
-      await ensureSingletonCaisses(db);
-      const user = currentUserRef.current;
-      if (user) {
-        await ensureCaisseForUser(db, user.id, user.identifiant);
-      }
-      // Filet de sécurité pour tout AUTRE compte connu localement (pas seulement
-      // l'utilisateur courant) qui n'a jamais eu de caisse créée nulle part — voir le
-      // commentaire de la fonction. Peut créer des lignes pour des comptes qui ne se
-      // sont jamais connectés sur cet appareil, c'est voulu.
-      await ensureCaissesPourTousLesComptes(db);
-      const localCaissesAfter = await listCaisses(db);
-      for (const c of localCaissesAfter) {
-        pushCaisse(c).catch(() => {});
-      }
-      // Filet de sécurité : répare les pesées marquées "payé" dont le mouvement de
-      // caisse n'a jamais été créé (séquelle d'un bug déjà corrigé côté toggle, mais
-      // qui laisse les pesées déjà touchées bloquées sur "impayé" en Synthèse tant
-      // qu'elles n'ont pas été réparées) — désormais que les caisses viennent d'être
-      // synchronisées ci-dessus, la résolution a de bien meilleures chances d'aboutir.
-      const mouvementsRepares = await reparerPaiementsPeseesManquants(db);
-      for (const m of mouvementsRepares) {
-        pushMouvement(m).catch(() => {});
-      }
-      // Filet symétrique : une pesée/vente repassée à "impayé" dont le mouvement
-      // existe pourtant encore (suppression réussie en local mais jamais poussée vers
-      // Supabase, coupure réseau au moment de l'annulation) — Synthèse la comptait
-      // comme payée malgré Historique affichant "impayé".
-      const peseesOrphelines = await reparerMouvementsPeseesOrphelins(db);
-      for (const { peseeId, volet } of peseesOrphelines) {
-        pushDeleteMouvementForPesee(peseeId, volet).catch(() => {});
-      }
-      const ventesOrphelines = await reparerMouvementsVentesOrphelins(db);
-      for (const { venteId, volet } of ventesOrphelines) {
-        pushDeleteMouvementForVente(venteId, volet).catch(() => {});
-      }
-      if (!cancelled) await refreshRef.current();
-    }
+  useEffect(() => {
+    if (!supabase) return;
+    let unsubscribeRealtime: (() => void) | undefined;
 
     fullSync();
     unsubscribeRealtime = subscribeRealtime(() => {
@@ -339,11 +354,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       clearInterval(pushInterval);
-      cancelled = true;
       unsubscribeRealtime?.();
       authListener.subscription.unsubscribe();
     };
-  }, [db]);
+  }, [fullSync, pullAndRefresh, pushPending]);
+
+  // Synchronisation manuelle (bouton "Synchroniser") : relance immédiatement tout le
+  // cycle (repousse + tirage + réparations) sans attendre le prochain déclencheur
+  // automatique. Renvoie un résultat exploitable directement par l'écran appelant
+  // plutôt que d'imposer sa propre UI d'alerte.
+  const synchroniserMaintenant = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
+    if (!supabase) {
+      return { ok: false, message: 'Synchronisation cloud non configurée sur cette installation.' };
+    }
+    setSyncing(true);
+    try {
+      const ok = await fullSync();
+      return ok
+        ? { ok: true, message: 'Synchronisation réussie.' }
+        : { ok: false, message: "Pas de connexion — vérifiez votre réseau puis réessayez." };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : 'Erreur inconnue.' };
+    } finally {
+      setSyncing(false);
+    }
+  }, [fullSync]);
 
   const addPartenaire = useCallback(
     async (input: CreatePartenaireInput) => {
@@ -755,7 +790,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       prixLitre,
       prixTransportRegime,
       loading,
+      syncing,
       refresh,
+      synchroniserMaintenant,
       addPartenaire,
       supprimerPartenaire,
       enregistrerPesee,
@@ -790,7 +827,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       prixLitre,
       prixTransportRegime,
       loading,
+      syncing,
       refresh,
+      synchroniserMaintenant,
       addPartenaire,
       supprimerPartenaire,
       enregistrerPesee,
