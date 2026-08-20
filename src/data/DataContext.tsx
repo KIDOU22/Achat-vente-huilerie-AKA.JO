@@ -14,6 +14,8 @@ import {
   annulerPesee as annulerPeseeRepo,
   createPesee,
   listPesees,
+  setPrixRegimePesee,
+  setPrixTransportPesee,
   togglePayeRegime as togglePayeRegimeRepo,
   togglePayeTransportRegime as togglePayeTransportRegimeRepo,
   type CreatePeseeInput,
@@ -100,7 +102,9 @@ interface DataContextValue {
   enregistrerPesee: (input: Omit<CreatePeseeInput, 'userId' | 'userNom' | 'chauffeurNom'>) => Promise<Pesee>;
   enregistrerVente: (input: Omit<CreateVenteInput, 'userId' | 'userNom'>) => Promise<Vente>;
   togglePayeRegime: (id: string, paye: boolean) => Promise<void>;
+  payerRegimePontIndependant: (id: string, prixKg: number) => Promise<void>;
   togglePayeTransportRegime: (id: string, paye: boolean) => Promise<void>;
+  payerTransportPontIndependant: (id: string, prixTransportKg: number) => Promise<void>;
   togglePayeVenteHuile: (id: string, paye: boolean, caisseId?: string) => Promise<void>;
   togglePayeVenteTransport: (id: string, paye: boolean, caisseId?: string) => Promise<void>;
   annulerPesee: (id: string, motif: string) => Promise<void>;
@@ -519,6 +523,44 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [db, refresh, currentUser, pesees, resoudreCaisseCreateur]
   );
 
+  // Pont indépendant : le prix du régime est verrouillé à 0 à la pesée (voir
+  // AchatScreen) — gérant/dirigeant le renseigne ici, au moment même du paiement.
+  // Combine la définition du prix et togglePayeRegime(true) en une seule action
+  // atomique côté app : jamais de pesée "payée" dont le montant resterait à 0.
+  const payerRegimePontIndependant = useCallback(
+    async (id: string, prixKg: number) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      const pesee = pesees.find((p) => p.id === id);
+      if (!pesee) throw new Error('Pesée introuvable');
+      const caisse = await resoudreCaisseCreateur(pesee.createdBy);
+      if (!caisse) {
+        Alert.alert(
+          'Paiement non enregistré',
+          "Impossible de retrouver la caisse de l'agent qui a enregistré cette pesée sur cet appareil. Vérifiez la connexion puis réessayez."
+        );
+        return;
+      }
+      const montant = Math.round(pesee.net * prixKg);
+      await setPrixRegimePesee(db, id, { prixKg, montant });
+      await togglePayeRegimeRepo(db, id, true, { userId: currentUser.id, userNom: currentUser.nom });
+      const mouvement = await enregistrerPaiementPesee(db, {
+        caisseId: caisse.id,
+        peseeId: id,
+        volet: 'produit',
+        montant,
+        actor: { userId: currentUser.id, userNom: currentUser.nom },
+      });
+      if (mouvement) pushMouvement(mouvement).catch(() => {});
+      await refresh();
+      pushPesee({ ...pesee, prixKg, montant, payeRegime: true }).catch(() => {});
+      const r = await pushPayeRegimeStatus(id, true).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (statut paiement régime)', r.error ?? 'Erreur inconnue');
+      }
+    },
+    [db, refresh, currentUser, pesees, resoudreCaisseCreateur]
+  );
+
   const togglePayeTransportRegime = useCallback(
     async (id: string, paye: boolean) => {
       if (!currentUser) throw new Error('Utilisateur non connecté');
@@ -549,6 +591,41 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
       await refresh();
       const r = await pushPayeTransportPeseeStatus(id, paye).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (statut paiement transport)', r.error ?? 'Erreur inconnue');
+      }
+    },
+    [db, refresh, currentUser, pesees, resoudreCaisseCreateur]
+  );
+
+  // Symétrique de payerRegimePontIndependant ci-dessus, pour le volet transport.
+  const payerTransportPontIndependant = useCallback(
+    async (id: string, prixTransportKg: number) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      const pesee = pesees.find((p) => p.id === id);
+      if (!pesee) throw new Error('Pesée introuvable');
+      const caisse = await resoudreCaisseCreateur(pesee.createdBy);
+      if (!caisse) {
+        Alert.alert(
+          'Paiement non enregistré',
+          "Impossible de retrouver la caisse de l'agent qui a enregistré cette pesée sur cet appareil. Vérifiez la connexion puis réessayez."
+        );
+        return;
+      }
+      const montantTransport = Math.round(pesee.net * prixTransportKg);
+      await setPrixTransportPesee(db, id, { prixTransportKg, montantTransport });
+      await togglePayeTransportRegimeRepo(db, id, true, { userId: currentUser.id, userNom: currentUser.nom });
+      const mouvement = await enregistrerPaiementPesee(db, {
+        caisseId: caisse.id,
+        peseeId: id,
+        volet: 'transport',
+        montant: montantTransport,
+        actor: { userId: currentUser.id, userNom: currentUser.nom },
+      });
+      if (mouvement) pushMouvement(mouvement).catch(() => {});
+      await refresh();
+      pushPesee({ ...pesee, prixTransportKg, montantTransport, payeTransport: true }).catch(() => {});
+      const r = await pushPayeTransportPeseeStatus(id, true).catch((err) => ({ ok: false, error: String(err) }));
       if (!r.ok) {
         Alert.alert('Synchro cloud échouée (statut paiement transport)', r.error ?? 'Erreur inconnue');
       }
@@ -798,7 +875,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       enregistrerPesee,
       enregistrerVente,
       togglePayeRegime,
+      payerRegimePontIndependant,
       togglePayeTransportRegime,
+      payerTransportPontIndependant,
       togglePayeVenteHuile,
       togglePayeVenteTransport,
       annulerPesee,
@@ -835,7 +914,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       enregistrerPesee,
       enregistrerVente,
       togglePayeRegime,
+      payerRegimePontIndependant,
       togglePayeTransportRegime,
+      payerTransportPontIndependant,
       togglePayeVenteHuile,
       togglePayeVenteTransport,
       annulerPesee,

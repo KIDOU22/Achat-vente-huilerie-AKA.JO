@@ -7,7 +7,7 @@ import { Card } from '../components/ui/Card';
 import { TextField } from '../components/ui/TextField';
 import { useAppData } from '../data/DataContext';
 import { formatDateLabel, formatFCFA, formatTime } from '../domain/format';
-import type { Pesee, Vente } from '../domain/types';
+import type { Partenaire, Pesee, Vente } from '../domain/types';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -21,7 +21,9 @@ export function HistoriqueScreen() {
     partenaires,
     caisses,
     togglePayeRegime,
+    payerRegimePontIndependant,
     togglePayeTransportRegime,
+    payerTransportPontIndependant,
     togglePayeVenteHuile,
     togglePayeVenteTransport,
     annulerPesee,
@@ -30,6 +32,10 @@ export function HistoriqueScreen() {
   const [motifCible, setMotifCible] = useState<{ kind: 'pesee' | 'vente'; id: string } | null>(null);
   const [motif, setMotif] = useState('');
   const [payerVenteCible, setPayerVenteCible] = useState<{ venteId: string; volet: 'produit' | 'transport' } | null>(null);
+  // Pont indépendant : le prix (régime ou transport) n'est jamais connu à la pesée —
+  // le gérant/dirigeant le saisit ici, au moment même où il valide le paiement.
+  const [payerPontCible, setPayerPontCible] = useState<{ peseeId: string; volet: 'produit' | 'transport' } | null>(null);
+  const [prixPontSaisi, setPrixPontSaisi] = useState('');
 
   const impayes = useMemo(
     () => pesees.filter((p) => !p.annulee && (!p.payeRegime || !p.payeTransport)),
@@ -77,6 +83,23 @@ export function HistoriqueScreen() {
       togglePayeVenteTransport(payerVenteCible.venteId, true, caisseId);
     }
     setPayerVenteCible(null);
+  }
+
+  function demanderPaiementPont(peseeId: string, volet: 'produit' | 'transport') {
+    setPrixPontSaisi('');
+    setPayerPontCible({ peseeId, volet });
+  }
+
+  async function confirmerPaiementPont() {
+    if (!payerPontCible) return;
+    const prix = parseFloat(prixPontSaisi) || 0;
+    if (prix <= 0) return;
+    if (payerPontCible.volet === 'produit') {
+      await payerRegimePontIndependant(payerPontCible.peseeId, prix);
+    } else {
+      await payerTransportPontIndependant(payerPontCible.peseeId, prix);
+    }
+    setPayerPontCible(null);
   }
 
   function confirmerAnnulation() {
@@ -136,9 +159,10 @@ export function HistoriqueScreen() {
           row.kind === 'pesee' ? (
             <PeseeRow
               pesee={row.item}
-              planteurNom={planteurById(row.item.planteurId)?.nom}
+              planteur={planteurById(row.item.planteurId)}
               onTogglePayeRegime={togglePayeRegime}
               onTogglePayeTransport={togglePayeTransportRegime}
+              onDemanderPaiementPont={demanderPaiementPont}
               isManager={isElevated}
               onAnnuler={() => demanderAnnulation('pesee', row.item.id)}
             />
@@ -198,45 +222,134 @@ export function HistoriqueScreen() {
           </Card>
         </View>
       </Modal>
+
+      <Modal visible={!!payerPontCible} transparent animationType="fade" onRequestClose={() => setPayerPontCible(null)}>
+        <View style={styles.modalOverlay}>
+          <Card style={{ width: '100%', maxWidth: 360, gap: 12 }}>
+            <Text style={styles.cardTitleText}>
+              Prix {payerPontCible?.volet === 'transport' ? 'du transport' : 'du régime'} — Pont indépendant
+            </Text>
+            <TextField
+              label="Prix par kg (F)"
+              value={prixPontSaisi}
+              onChangeText={setPrixPontSaisi}
+              placeholder="ex: 95"
+              keyboardType="numeric"
+            />
+            {(() => {
+              const pesee = pesees.find((p) => p.id === payerPontCible?.peseeId);
+              const prix = parseFloat(prixPontSaisi) || 0;
+              if (!pesee || prix <= 0) return null;
+              return (
+                <Text style={styles.pontMontantApercu}>
+                  {Math.round(pesee.net).toLocaleString('fr-FR')} kg net × {prix} F = {formatFCFA(Math.round(pesee.net * prix))}
+                </Text>
+              );
+            })()}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Button label="Fermer" variant="outline" color={colors.textMuted} onPress={() => setPayerPontCible(null)} style={{ flex: 1 }} />
+              <Button
+                label="Valider le paiement"
+                onPress={confirmerPaiementPont}
+                disabled={(parseFloat(prixPontSaisi) || 0) <= 0}
+                color={colors.accent}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Card>
+        </View>
+      </Modal>
     </>
   );
 }
 
-function PayePill({ label, paye, onPress }: { label: string; paye: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.payePill, { backgroundColor: paye ? `${colors.frond}33` : `${colors.accent}33` }]}
-    >
-      {paye ? <Check size={11} color={colors.frond} /> : <X size={11} color={colors.accent} />}
-      <Text style={{ color: paye ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 11 }}>
+function PayePill({ label, paye, onPress }: { label: string; paye: boolean; onPress?: () => void }) {
+  const content = (
+    <>
+      {onPress ? (
+        paye ? (
+          <Check size={11} color={colors.frond} />
+        ) : (
+          <X size={11} color={colors.accent} />
+        )
+      ) : (
+        <Lock size={11} color={colors.textFaint} />
+      )}
+      <Text
+        style={{
+          color: onPress ? (paye ? colors.frond : colors.accent) : colors.textFaint,
+          fontFamily: fonts.bodyMedium,
+          fontSize: 11,
+        }}
+      >
         {label} {paye ? 'payé' : 'impayé'}
       </Text>
+    </>
+  );
+  // Sans onPress (ex: régime/transport d'un pont indépendant pour un agent) : affiché
+  // en lecture seule, non cliquable — le paiement est réservé au gérant/dirigeant.
+  if (!onPress) {
+    return <View style={[styles.payePill, { backgroundColor: `${colors.textFaint}22` }]}>{content}</View>;
+  }
+  return (
+    <Pressable onPress={onPress} style={[styles.payePill, { backgroundColor: paye ? `${colors.frond}33` : `${colors.accent}33` }]}>
+      {content}
     </Pressable>
   );
 }
 
 function PeseeRow({
   pesee,
-  planteurNom,
+  planteur,
   onTogglePayeRegime,
   onTogglePayeTransport,
+  onDemanderPaiementPont,
   isManager,
   onAnnuler,
 }: {
   pesee: Pesee;
-  planteurNom: string | undefined;
+  planteur: Partenaire | undefined;
   onTogglePayeRegime: (id: string, paye: boolean) => Promise<void>;
   onTogglePayeTransport: (id: string, paye: boolean) => Promise<void>;
+  onDemanderPaiementPont: (peseeId: string, volet: 'produit' | 'transport') => void;
   isManager: boolean;
   onAnnuler: () => void;
 }) {
+  // Pont indépendant : prix (régime et transport) verrouillé à 0 à la pesée, quel que
+  // soit le rôle — renseigné par le gérant/dirigeant au moment même du paiement (voir
+  // AchatScreen). Le paiement lui-même reste réservé à ces deux rôles ; un agent voit
+  // les deux puces mais ne peut pas les actionner.
+  const estPontIndependant = planteur?.type === 'pont_independant';
+  const regimePrixDefini = pesee.prixKg > 0;
+  const transportPrixDefini = pesee.prixTransportKg > 0;
+  // Le prix normal (planteur) rend toujours un montant transport > 0 dès qu'un
+  // chauffeur est sélectionné — pour un pont indépendant, le montant reste à 0 tant
+  // que le prix n'a pas été renseigné : il faut donc afficher la puce quand même,
+  // sans quoi rien ne permettrait au gérant d'initier ce paiement.
+  const afficherTransport = estPontIndependant || pesee.montantTransport > 0;
+
+  const regimeOnPress = estPontIndependant
+    ? isManager
+      ? regimePrixDefini
+        ? () => onTogglePayeRegime(pesee.id, !pesee.payeRegime)
+        : () => onDemanderPaiementPont(pesee.id, 'produit')
+      : undefined
+    : () => onTogglePayeRegime(pesee.id, !pesee.payeRegime);
+
+  const transportOnPress = estPontIndependant
+    ? isManager
+      ? transportPrixDefini
+        ? () => onTogglePayeTransport(pesee.id, !pesee.payeTransport)
+        : () => onDemanderPaiementPont(pesee.id, 'transport')
+      : undefined
+    : () => onTogglePayeTransport(pesee.id, !pesee.payeTransport);
+
   return (
     <View style={[styles.card, pesee.annulee && styles.cardAnnulee]}>
       <View style={styles.cardHeader}>
         <View style={{ flexShrink: 1 }}>
           <Text style={styles.cardTitle}>
-            {planteurNom ?? '—'} <Text style={styles.cardTitleMuted}>· pesée n° {pesee.numTicketPesee}</Text>
+            {planteur?.nom ?? '—'} <Text style={styles.cardTitleMuted}>· pesée n° {pesee.numTicketPesee}</Text>
           </Text>
           <Text style={styles.cardMeta}>
             {formatDateLabel(pesee.ts)} · {formatTime(pesee.ts)} · {pesee.typeVehicule} {pesee.immatriculation}
@@ -249,14 +362,8 @@ function PeseeRow({
           </View>
         ) : (
           <View style={{ gap: 6, alignItems: 'flex-end' }}>
-            <PayePill label="Régime" paye={pesee.payeRegime} onPress={() => onTogglePayeRegime(pesee.id, !pesee.payeRegime)} />
-            {pesee.montantTransport > 0 && (
-              <PayePill
-                label="Transport"
-                paye={pesee.payeTransport}
-                onPress={() => onTogglePayeTransport(pesee.id, !pesee.payeTransport)}
-              />
-            )}
+            <PayePill label="Régime" paye={pesee.payeRegime} onPress={regimeOnPress} />
+            {afficherTransport && <PayePill label="Transport" paye={pesee.payeTransport} onPress={transportOnPress} />}
           </View>
         )}
       </View>
@@ -264,15 +371,28 @@ function PeseeRow({
         <Text style={styles.motifAnnulationText}>Motif : {pesee.motifAnnulation}</Text>
       )}
       <View style={styles.cardFooter}>
-        <Text style={styles.footerLeft}>
-          {Math.round(pesee.net).toLocaleString('fr-FR')} kg net × {pesee.prixKg} F
-        </Text>
-        <Text style={styles.footerRight}>{formatFCFA(pesee.montant)}</Text>
+        {estPontIndependant && !regimePrixDefini ? (
+          <>
+            <Text style={styles.footerLeft}>{Math.round(pesee.net).toLocaleString('fr-FR')} kg net</Text>
+            <Text style={styles.footerRightPending}>Prix à définir</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.footerLeft}>
+              {Math.round(pesee.net).toLocaleString('fr-FR')} kg net × {pesee.prixKg} F
+            </Text>
+            <Text style={styles.footerRight}>{formatFCFA(pesee.montant)}</Text>
+          </>
+        )}
       </View>
-      {pesee.montantTransport > 0 && (
+      {afficherTransport && (
         <View style={styles.cardFooter}>
           <Text style={styles.footerLeft}>Transport — {pesee.chauffeur}</Text>
-          <Text style={styles.footerRight}>{formatFCFA(pesee.montantTransport)}</Text>
+          {estPontIndependant && !transportPrixDefini ? (
+            <Text style={styles.footerRightPending}>Prix à définir</Text>
+          ) : (
+            <Text style={styles.footerRight}>{formatFCFA(pesee.montantTransport)}</Text>
+          )}
         </View>
       )}
       {isManager && !pesee.annulee && (
@@ -421,6 +541,7 @@ const styles = StyleSheet.create({
   },
   footerLeft: { fontFamily: fonts.mono, fontSize: 13, color: colors.textMuted },
   footerRight: { fontFamily: fonts.monoSemiBold, fontSize: 13, color: colors.text },
+  footerRightPending: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textFaint, fontStyle: 'italic' },
   lockedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   lockedText: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint },
   annulerBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, alignSelf: 'flex-start' },
@@ -435,4 +556,5 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   cardTitleText: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.text },
+  pontMontantApercu: { fontFamily: fonts.mono, fontSize: 13, color: colors.textMuted },
 });

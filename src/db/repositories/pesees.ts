@@ -187,6 +187,32 @@ export async function togglePayeRegime(
   });
 }
 
+// Pont indépendant : le prix du régime n'est pas connu à la pesée (verrouillé à 0
+// pour tous les rôles, voir AchatScreen) — le gérant/dirigeant le renseigne au
+// moment du paiement, ce qui recalcule le montant. Sans effet sur le volet transport.
+export async function setPrixRegimePesee(
+  db: SQLiteDatabase,
+  id: string,
+  input: { prixKg: number; montant: number }
+): Promise<void> {
+  await db.runAsync('UPDATE pesees SET prix_kg = ?, montant = ? WHERE id = ?', input.prixKg, input.montant, id);
+}
+
+// Même principe que setPrixRegimePesee ci-dessus, pour le volet transport d'un pont
+// indépendant — également verrouillé à 0 à la pesée, renseigné au paiement.
+export async function setPrixTransportPesee(
+  db: SQLiteDatabase,
+  id: string,
+  input: { prixTransportKg: number; montantTransport: number }
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE pesees SET prix_transport_kg = ?, montant_transport = ? WHERE id = ?',
+    input.prixTransportKg,
+    input.montantTransport,
+    id
+  );
+}
+
 export async function togglePayeTransportRegime(
   db: SQLiteDatabase,
   id: string,

@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react-native';
+import { Check, Lock } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
@@ -33,14 +33,21 @@ export function AchatScreen() {
   const [lastTicket, setLastTicket] = useState<Pesee | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const fournisseurSelectionne = fournisseurs.find((f) => f.id === selectedPlanteur);
+  // Pont indépendant : le prix du régime n'est jamais connu à la pesée, quel que soit
+  // le rôle — le gérant/dirigeant le renseigne au moment du paiement (voir
+  // HistoriqueScreen). Verrouillé ici pour tout le monde, contrairement au prix normal
+  // qui reste modifiable par le gérant/dirigeant pour un planteur.
+  const estPontIndependant = fournisseurSelectionne?.type === 'pont_independant';
+
   const netAchat = useMemo(() => {
     const c = parseFloat(poidsCharge) || 0;
     const v = parseFloat(poidsVide) || 0;
     return Math.max(0, c - v);
   }, [poidsCharge, poidsVide]);
 
-  const prixNum = parseFloat(prixKg) || 0;
-  const prixTransportNum = parseFloat(prixTransportRegime) || 0;
+  const prixNum = estPontIndependant ? 0 : parseFloat(prixKg) || 0;
+  const prixTransportNum = estPontIndependant ? 0 : parseFloat(prixTransportRegime) || 0;
   const montant = Math.round(netAchat * prixNum);
   const montantTransport = Math.round(netAchat * prixTransportNum);
 
@@ -133,7 +140,12 @@ export function AchatScreen() {
 
       <View style={styles.priceBox}>
         <Text style={styles.netLabel}>Prix du jour de régime (CFA/Kg)</Text>
-        {isManager ? (
+        {estPontIndependant ? (
+          <View style={styles.lockedRow}>
+            <Lock size={13} color={colors.textFaint} />
+            <Text style={styles.lockedText}>Défini au paiement</Text>
+          </View>
+        ) : isManager ? (
           <TextInput value={prixKg} onChangeText={setPrixKg} keyboardType="numeric" style={styles.priceInput} />
         ) : (
           <Text style={styles.priceReadOnly}>{formatFCFA(prixNum)}</Text>
@@ -142,7 +154,12 @@ export function AchatScreen() {
 
       <View style={styles.priceBox}>
         <Text style={styles.netLabel}>Coût du transport de régime (CFA/Kg)</Text>
-        {isManager ? (
+        {estPontIndependant ? (
+          <View style={styles.lockedRow}>
+            <Lock size={13} color={colors.textFaint} />
+            <Text style={styles.lockedText}>Défini au paiement</Text>
+          </View>
+        ) : isManager ? (
           <TextInput
             value={prixTransportRegime}
             onChangeText={setPrixTransportRegime}
@@ -156,12 +173,20 @@ export function AchatScreen() {
 
       <View style={styles.montantRow}>
         <Text style={styles.netLabel}>Montant régime de palme</Text>
-        <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
+        {estPontIndependant ? (
+          <Text style={styles.montantValuePending}>À définir</Text>
+        ) : (
+          <Text style={styles.montantValue}>{formatFCFA(montant)}</Text>
+        )}
       </View>
 
       <View style={styles.montantRow}>
         <Text style={styles.netLabel}>Coût de transport</Text>
-        <Text style={styles.montantValue}>{formatFCFA(montantTransport)}</Text>
+        {estPontIndependant ? (
+          <Text style={styles.montantValuePending}>À définir</Text>
+        ) : (
+          <Text style={styles.montantValue}>{formatFCFA(montantTransport)}</Text>
+        )}
       </View>
 
       <Button label="Enregistrer la pesée" onPress={handleSubmit} disabled={!canSubmit} loading={saving} icon={<Check size={18} color={colors.onBackground} />} />
@@ -217,6 +242,9 @@ const styles = StyleSheet.create({
     color: colors.amber,
     flexShrink: 0,
   },
+  lockedRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0 },
+  lockedText: { fontFamily: fonts.body, fontSize: 13, color: colors.textFaint },
+  montantValuePending: { fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.textFaint, fontStyle: 'italic' },
   montantRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

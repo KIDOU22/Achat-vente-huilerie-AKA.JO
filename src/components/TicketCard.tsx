@@ -8,11 +8,22 @@ import { Row } from './ui/Row';
 import { LockedLabel } from './ui/LockedValue';
 
 export function AchatTicketCard({ t, planteur }: { t: Pesee; planteur: Partenaire | undefined }) {
+  // Pont indépendant : le prix (régime et transport) est différé au paiement — voir
+  // AchatScreen/HistoriqueScreen — un montant à 0 ici ne veut pas dire "gratuit" mais
+  // "pas encore renseigné".
+  const estPontIndependant = planteur?.type === 'pont_independant';
+  const regimePrixDefini = t.prixKg > 0;
+  const transportPrixDefini = t.prixTransportKg > 0;
+  const afficherTransport = estPontIndependant || t.montantTransport > 0;
   return (
     <View style={[styles.card, { borderColor: `${colors.accent}55` }]}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.accent }]}>Ticket d'achat #{t.num}</Text>
-        <Text style={styles.amount}>{formatFCFA(t.montant)}</Text>
+        {estPontIndependant && !regimePrixDefini ? (
+          <Text style={styles.amountPending}>À définir</Text>
+        ) : (
+          <Text style={styles.amount}>{formatFCFA(t.montant)}</Text>
+        )}
       </View>
       <Row label="Planteur" value={planteur?.nom ?? '—'} bold />
       <Row label="Date" value={`${formatDateLabel(t.ts)}, ${formatTime(t.ts)}`} />
@@ -23,15 +34,17 @@ export function AchatTicketCard({ t, planteur }: { t: Pesee; planteur: Partenair
       <Row label="Poids en charge" value={formatKg(t.poidsCharge)} />
       <Row label="Poids à vide" value={formatKg(t.poidsVide)} />
       <Row label="Poids net" value={formatKg(t.net)} bold />
-      <Row label="Prix/kg" value={formatFCFA(t.prixKg)} />
-      {t.montantTransport > 0 && <Row label="Coût transport" value={formatFCFA(t.montantTransport)} />}
+      <Row label="Prix/kg" value={regimePrixDefini ? formatFCFA(t.prixKg) : 'À définir au paiement'} />
+      {afficherTransport && (
+        <Row label="Coût transport" value={transportPrixDefini ? formatFCFA(t.montantTransport) : 'À définir au paiement'} />
+      )}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
         <View style={[styles.statusPill, { marginTop: 0, backgroundColor: t.payeRegime ? `${colors.frond}33` : `${colors.accent}33` }]}>
           <Text style={{ color: t.payeRegime ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 12 }}>
             Régime {t.payeRegime ? 'payé' : 'impayé'}
           </Text>
         </View>
-        {t.montantTransport > 0 && (
+        {afficherTransport && (
           <View style={[styles.statusPill, { marginTop: 0, backgroundColor: t.payeTransport ? `${colors.frond}33` : `${colors.accent}33` }]}>
             <Text style={{ color: t.payeTransport ? colors.frond : colors.accent, fontFamily: fonts.bodyMedium, fontSize: 12 }}>
               Transport {t.payeTransport ? 'payé' : 'impayé'}
@@ -94,6 +107,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.monoSemiBold,
     fontSize: 16,
     color: colors.text,
+  },
+  amountPending: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 14,
+    color: colors.textFaint,
+    fontStyle: 'italic',
   },
   statusPill: {
     alignSelf: 'flex-start',
