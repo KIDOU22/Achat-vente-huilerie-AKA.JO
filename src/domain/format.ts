@@ -1,5 +1,5 @@
 import 'react-native-get-random-values';
-import type { Periode } from './types';
+import type { FinancePeriode, Periode } from './types';
 
 // UUID v4 — même format que les colonnes "uuid" Supabase, pour synchroniser
 // un enregistrement local et distant sous le même identifiant sans table de mapping.
@@ -113,5 +113,40 @@ export const PERIODE_LABELS: Record<Periode, string> = {
   jour: "aujourd'hui",
   semaine: 'cette semaine',
   mois: 'ce mois',
+  annee: 'cette année',
+};
+
+// --- Helpers période module Finance (mois/trimestre/année — distinct de
+// Periode ci-dessus, qui reste utilisé tel quel par Synthèse) ---
+export function financePeriodKey(date: Date, period: FinancePeriode): string {
+  if (period === 'mois') return `${date.getFullYear()}-${date.getMonth()}`;
+  if (period === 'trimestre') return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
+  return `${date.getFullYear()}`;
+}
+
+export function financePeriodLabel(date: Date, period: FinancePeriode): string {
+  if (period === 'mois') return date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  if (period === 'trimestre') return `T${Math.floor(date.getMonth() / 3) + 1} ${date.getFullYear()}`;
+  return `${date.getFullYear()}`;
+}
+
+// Bornes [début, fin) en epoch ms de la période contenant `date`, pour filtrer
+// des mouvements/lignes de budget par intervalle plutôt que par periodKey.
+export function financePeriodBounds(date: Date, period: FinancePeriode): { start: number; end: number } {
+  const year = date.getFullYear();
+  if (period === 'mois') {
+    const month = date.getMonth();
+    return { start: new Date(year, month, 1).getTime(), end: new Date(year, month + 1, 1).getTime() };
+  }
+  if (period === 'trimestre') {
+    const q = Math.floor(date.getMonth() / 3);
+    return { start: new Date(year, q * 3, 1).getTime(), end: new Date(year, q * 3 + 3, 1).getTime() };
+  }
+  return { start: new Date(year, 0, 1).getTime(), end: new Date(year + 1, 0, 1).getTime() };
+}
+
+export const FINANCE_PERIODE_LABELS: Record<FinancePeriode, string> = {
+  mois: 'ce mois',
+  trimestre: 'ce trimestre',
   annee: 'cette année',
 };

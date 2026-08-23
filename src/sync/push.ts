@@ -1,5 +1,17 @@
 import { supabase } from '../lib/supabase';
-import type { Caisse, MouvementCaisse, MouvementStatut, Partenaire, Pesee, User, Vente } from '../domain/types';
+import type {
+  BudgetAnnuel,
+  BudgetLigne,
+  Caisse,
+  FinanceCategorie,
+  MouvementCaisse,
+  MouvementStatut,
+  MouvementTresorerie,
+  Partenaire,
+  Pesee,
+  User,
+  Vente,
+} from '../domain/types';
 
 // Toutes les fonctions ci-dessous sont "best-effort" : si Supabase n'est pas
 // configuré ou si l'appareil est hors-ligne, l'erreur est journalisée sans jamais
@@ -391,6 +403,126 @@ export async function pushDeleteMouvementForVente(venteId: string, volet: 'produ
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn('[sync] pushDeleteMouvementForVente a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+// ============================================================
+// Module Finance & Comptabilité — Phase 1.
+// ============================================================
+
+export async function pushFinanceCategorie(c: FinanceCategorie): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(c.id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('finance_categories').upsert({
+      id: c.id,
+      type: c.type,
+      libelle: c.libelle,
+      actif: c.actif,
+      created_at: new Date(c.createdAt).toISOString(),
+    });
+    if (error) {
+      console.warn('[sync] pushFinanceCategorie a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushFinanceCategorie a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+export async function pushBudgetAnnuel(b: BudgetAnnuel): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(b.id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('finance_budgets').upsert({
+      id: b.id,
+      annee: b.annee,
+      solde_ouverture: b.soldeOuverture,
+      date_ouverture: new Date(b.dateOuverture).toISOString(),
+      created_by: b.createdBy,
+      created_at: new Date(b.createdAt).toISOString(),
+    });
+    if (error) {
+      console.warn('[sync] pushBudgetAnnuel a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushBudgetAnnuel a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+export async function pushBudgetLigne(l: BudgetLigne): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(l.id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('finance_budget_lignes').upsert({
+      id: l.id,
+      budget_id: l.budgetId,
+      categorie_id: l.categorieId,
+      mois: l.mois,
+      montant_prevu: l.montantPrevu,
+    });
+    if (error) {
+      console.warn('[sync] pushBudgetLigne a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushBudgetLigne a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+export async function pushMouvementTresorerie(m: MouvementTresorerie): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(m.id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('finance_mouvements').upsert({
+      id: m.id,
+      ts: new Date(m.ts).toISOString(),
+      num_piece: m.numPiece,
+      libelle: m.libelle,
+      categorie_id: m.categorieId,
+      mode_paiement: m.modePaiement,
+      entree: m.entree,
+      sortie: m.sortie,
+      created_by: m.createdBy,
+      created_by_nom: m.createdByNom,
+      created_at: new Date(m.createdAt).toISOString(),
+    });
+    if (error) {
+      console.warn('[sync] pushMouvementTresorerie a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushMouvementTresorerie a échoué :', err);
+    return { ok: false, error: message };
+  }
+}
+
+export async function pushDeleteMouvementTresorerie(id: string): Promise<PushResult> {
+  if (!supabase) return { ok: false, error: 'Supabase non configuré' };
+  if (!UUID_RE.test(id)) return { ok: false, error: 'id local invalide (pas un UUID)' };
+  try {
+    const { error } = await supabase.from('finance_mouvements').delete().eq('id', id);
+    if (error) {
+      console.warn('[sync] pushDeleteMouvementTresorerie a échoué :', error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[sync] pushDeleteMouvementTresorerie a échoué :', err);
     return { ok: false, error: message };
   }
 }

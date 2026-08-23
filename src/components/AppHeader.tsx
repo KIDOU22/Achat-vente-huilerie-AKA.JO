@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Lock, LogOut, RefreshCw, UserCog } from 'lucide-react-native';
+import { Landmark, Lock, LogOut, RefreshCw, UserCog } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Alert, Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -79,6 +79,11 @@ export function AppHeader() {
               <RefreshCw size={18} color={syncing ? colors.onBackgroundFaint : colors.onBackgroundMuted} />
             </Animated.View>
           </Pressable>
+          {isElevated && (
+            <Pressable onPress={() => router.push('/(finance)/tableau-de-bord')} hitSlop={10}>
+              <Landmark size={18} color={colors.onBackgroundMuted} />
+            </Pressable>
+          )}
           {isElevated && (
             <Pressable onPress={() => router.push('/comptes')} hitSlop={10}>
               <UserCog size={18} color={colors.onBackgroundMuted} />

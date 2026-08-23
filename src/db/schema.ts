@@ -128,6 +128,50 @@ CREATE TABLE IF NOT EXISTS mouvements_caisse (
 CREATE INDEX IF NOT EXISTS idx_mouvements_ts ON mouvements_caisse(ts);
 CREATE INDEX IF NOT EXISTS idx_mouvements_from ON mouvements_caisse(caisse_from_id);
 CREATE INDEX IF NOT EXISTS idx_mouvements_to ON mouvements_caisse(caisse_to_id);
+
+-- Module Finance & Comptabilité — Phase 1 (Trésorerie & Budget). Registre
+-- séparé de caisses/mouvements_caisse ci-dessus (dédié au paiement des
+-- achats/ventes) — voir le plan de développement pour la justification.
+CREATE TABLE IF NOT EXISTS finance_categories (
+  id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('recette', 'depense')),
+  libelle TEXT NOT NULL,
+  actif INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS finance_budgets (
+  id TEXT PRIMARY KEY NOT NULL,
+  annee INTEGER NOT NULL UNIQUE,
+  solde_ouverture REAL NOT NULL,
+  date_ouverture INTEGER NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS finance_budget_lignes (
+  id TEXT PRIMARY KEY NOT NULL,
+  budget_id TEXT NOT NULL REFERENCES finance_budgets(id),
+  categorie_id TEXT NOT NULL REFERENCES finance_categories(id),
+  mois INTEGER NOT NULL CHECK (mois BETWEEN 1 AND 12),
+  montant_prevu REAL NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_budget_lignes_unique ON finance_budget_lignes(budget_id, categorie_id, mois);
+
+CREATE TABLE IF NOT EXISTS finance_mouvements (
+  id TEXT PRIMARY KEY NOT NULL,
+  ts INTEGER NOT NULL,
+  num_piece TEXT NOT NULL DEFAULT '',
+  libelle TEXT NOT NULL,
+  categorie_id TEXT NOT NULL REFERENCES finance_categories(id),
+  mode_paiement TEXT NOT NULL CHECK (mode_paiement IN ('banque', 'caisse', 'mobile_money', 'autre')),
+  entree REAL NOT NULL DEFAULT 0,
+  sortie REAL NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_by_nom TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_finance_mouvements_ts ON finance_mouvements(ts);
 `;
 
 export async function migrate(db: SQLiteDatabase): Promise<void> {
@@ -165,6 +209,7 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
   await fusionnerCaissesUniquesEnDouble(db);
   await fusionnerPlanteursEnDouble(db);
   await dedupMouvementsPaiementEnDouble(db);
+  await seedFinanceCategoriesIfEmpty(db);
 }
 
 // Un mouvement de paiement (pesée ou vente, par volet produit/transport) créé deux
@@ -482,5 +527,55 @@ async function seedIfEmpty(db: SQLiteDatabase): Promise<void> {
         Date.now()
       );
     }
+  }
+}
+
+// Catégories de recettes/dépenses par défaut, reprises telles quelles du §3.1b du
+// cahier des charges. Paramétrables ensuite par le Gérant (ajout/renommage/
+// désactivation) — ce seed n'est qu'un point de départ, jamais réappliqué au-delà
+// de la première installation (garde sur COUNT).
+const CATEGORIES_RECETTE_DEFAUT = [
+  'Vente huile de palme (CPO)',
+  'Vente palmiste',
+  'Vente tourteaux, noix et sous-produits',
+  'Autres recettes (apports, subventions)',
+];
+
+const CATEGORIES_DEPENSE_DEFAUT = [
+  'Achat régimes de palme (matière première)',
+  'Main d’œuvre / salaires',
+  'Carburant pour production',
+  'Carburant pour déplacement',
+  'Carburant pour usine',
+  'Électricité usine',
+  'Électricité pour logement',
+  'Entretien et pièces de rechange',
+  'Transport et logistique',
+  'Emballages et fournitures',
+  'Charges administratives',
+  'Taxes et impôts',
+  'Investissements et équipements',
+  'Autres dépenses',
+];
+
+async function seedFinanceCategoriesIfEmpty(db: SQLiteDatabase): Promise<void> {
+  const count = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM finance_categories');
+  if (count && count.count > 0) return;
+  const now = Date.now();
+  for (const libelle of CATEGORIES_RECETTE_DEFAUT) {
+    await db.runAsync(
+      "INSERT INTO finance_categories (id, type, libelle, actif, created_at) VALUES (?, 'recette', ?, 1, ?)",
+      uid(),
+      libelle,
+      now
+    );
+  }
+  for (const libelle of CATEGORIES_DEPENSE_DEFAUT) {
+    await db.runAsync(
+      "INSERT INTO finance_categories (id, type, libelle, actif, created_at) VALUES (?, 'depense', ?, 1, ?)",
+      uid(),
+      libelle,
+      now
+    );
   }
 }

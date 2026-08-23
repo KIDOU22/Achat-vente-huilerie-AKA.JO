@@ -156,3 +156,66 @@ export const MOUVEMENT_TYPE_LABELS: Record<MouvementType, string> = {
   transfert: 'Transfert',
   apport: 'Apport (dépôt)',
 };
+
+// ============================================================
+// Module Finance & Comptabilité — Phase 1 (Trésorerie & Budget).
+// Registre séparé du système caisses/mouvements_caisse ci-dessus (qui
+// reste dédié au paiement des achats/ventes) — voir le plan de
+// développement pour la justification de ce cloisonnement en Phase 1.
+// ============================================================
+
+export type FinanceCategorieType = 'recette' | 'depense';
+
+export interface FinanceCategorie {
+  id: string;
+  type: FinanceCategorieType;
+  libelle: string;
+  actif: boolean;
+  createdAt: number;
+}
+
+export const MODES_PAIEMENT = ['banque', 'caisse', 'mobile_money', 'autre'] as const;
+export type ModePaiement = (typeof MODES_PAIEMENT)[number];
+
+export const MODE_PAIEMENT_LABELS: Record<ModePaiement, string> = {
+  banque: 'Banque',
+  caisse: 'Caisse',
+  mobile_money: 'Mobile Money',
+  autre: 'Autre',
+};
+
+export interface BudgetAnnuel {
+  id: string;
+  annee: number;
+  soldeOuverture: number;
+  dateOuverture: number;
+  createdBy: string;
+  createdAt: number;
+}
+
+export interface BudgetLigne {
+  id: string;
+  budgetId: string;
+  categorieId: string;
+  mois: number;
+  montantPrevu: number;
+}
+
+export interface MouvementTresorerie {
+  id: string;
+  ts: number;
+  numPiece: string;
+  libelle: string;
+  categorieId: string;
+  modePaiement: ModePaiement;
+  entree: number;
+  sortie: number;
+  createdBy: string;
+  createdByNom: string;
+  createdAt: number;
+}
+
+// Distinct de Periode (jour/semaine/mois/année, utilisé par Synthèse) pour ne
+// rien changer à son comportement existant — le tableau de bord financier a
+// besoin d'un trimestre, pas d'un jour/semaine.
+export type FinancePeriode = 'mois' | 'trimestre' | 'annee';

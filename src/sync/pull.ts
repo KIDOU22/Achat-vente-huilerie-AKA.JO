@@ -35,6 +35,13 @@ export async function pullAll(db: SQLiteDatabase): Promise<boolean> {
     await pullSettings(db);
     await pullCaisses(db);
     await pullMouvements(db);
+    // Finance & Comptabilité (Phase 1) — les lignes de budget référencent un budget
+    // et une catégorie locale, les mouvements référencent une catégorie : ordre
+    // catégories → budgets → lignes → mouvements.
+    await pullFinanceCategories(db);
+    await pullBudgets(db);
+    await pullBudgetLignes(db);
+    await pullMouvementsTresorerie(db);
     // Deux appareils réinstallés avant que la synchro ne fonctionne ont pu chacun
     // créer leur propre caisse "principale"/"banque"/"secondaire", ou les mêmes
     // planteurs de démo — une synchro peut donc en ramener plusieurs : on les
@@ -315,6 +322,115 @@ async function pullMouvements(db: SQLiteDatabase): Promise<void> {
       );
     } catch (err) {
       console.warn('[sync] pullMouvements : ligne ignorée', row.id, err);
+    }
+  }
+}
+
+// ============================================================
+// Module Finance & Comptabilité — Phase 1.
+// ============================================================
+
+async function pullFinanceCategories(db: SQLiteDatabase): Promise<void> {
+  if (!supabase) return;
+  const { data, error } = await supabase.from('finance_categories').select('*');
+  if (error || !data) return;
+  for (const row of data) {
+    try {
+      await db.runAsync(
+        `INSERT INTO finance_categories (id, type, libelle, actif, created_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET libelle = excluded.libelle, actif = excluded.actif`,
+        row.id,
+        row.type,
+        row.libelle,
+        row.actif ? 1 : 0,
+        new Date(row.created_at).getTime()
+      );
+    } catch (err) {
+      console.warn('[sync] pullFinanceCategories : ligne ignorée', row.id, err);
+    }
+  }
+}
+
+async function pullBudgets(db: SQLiteDatabase): Promise<void> {
+  if (!supabase) return;
+  const { data, error } = await supabase.from('finance_budgets').select('*');
+  if (error || !data) return;
+  for (const row of data) {
+    try {
+      await db.runAsync(
+        `INSERT INTO finance_budgets (id, annee, solde_ouverture, date_ouverture, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET solde_ouverture = excluded.solde_ouverture, date_ouverture = excluded.date_ouverture`,
+        row.id,
+        row.annee,
+        row.solde_ouverture,
+        new Date(row.date_ouverture).getTime(),
+        row.created_by,
+        new Date(row.created_at).getTime()
+      );
+    } catch (err) {
+      console.warn('[sync] pullBudgets : ligne ignorée', row.id, err);
+    }
+  }
+}
+
+async function pullBudgetLignes(db: SQLiteDatabase): Promise<void> {
+  if (!supabase) return;
+  const { data, error } = await supabase.from('finance_budget_lignes').select('*');
+  if (error || !data) return;
+  for (const row of data) {
+    try {
+      await db.runAsync(
+        `INSERT INTO finance_budget_lignes (id, budget_id, categorie_id, mois, montant_prevu) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET montant_prevu = excluded.montant_prevu`,
+        row.id,
+        row.budget_id,
+        row.categorie_id,
+        row.mois,
+        row.montant_prevu
+      );
+    } catch (err) {
+      console.warn('[sync] pullBudgetLignes : ligne ignorée', row.id, err);
+    }
+  }
+}
+
+async function pullMouvementsTresorerie(db: SQLiteDatabase): Promise<void> {
+  if (!supabase) return;
+  const { data, error } = await supabase.from('finance_mouvements').select('*');
+  // Comme pullCaisses : une réponse vide sans erreur ne doit jamais déclencher la
+  // réconciliation ci-dessous, qui supprimerait alors tous les mouvements locaux.
+  if (error || !data || data.length === 0) return;
+  for (const row of data) {
+    try {
+      await db.runAsync(
+        `INSERT INTO finance_mouvements (id, ts, num_piece, libelle, categorie_id, mode_paiement, entree, sortie, created_by, created_by_nom, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           libelle = excluded.libelle, categorie_id = excluded.categorie_id, mode_paiement = excluded.mode_paiement,
+           entree = excluded.entree, sortie = excluded.sortie, num_piece = excluded.num_piece`,
+        row.id,
+        new Date(row.ts).getTime(),
+        row.num_piece,
+        row.libelle,
+        row.categorie_id,
+        row.mode_paiement,
+        row.entree,
+        row.sortie,
+        row.created_by,
+        row.created_by_nom,
+        new Date(row.created_at).getTime()
+      );
+    } catch (err) {
+      console.warn('[sync] pullMouvementsTresorerie : ligne ignorée', row.id, err);
+    }
+  }
+  // Un mouvement supprimé (voir supprimerMouvementTresorerie) doit disparaître ici
+  // aussi, sinon la prochaine repousse locale le recréerait côté Supabase.
+  const remoteIds = new Set(data.map((r) => r.id));
+  const localRows = await db.getAllAsync<{ id: string }>('SELECT id FROM finance_mouvements');
+  for (const { id } of localRows) {
+    if (!remoteIds.has(id)) {
+      await db.runAsync('DELETE FROM finance_mouvements WHERE id = ?', id);
     }
   }
 }

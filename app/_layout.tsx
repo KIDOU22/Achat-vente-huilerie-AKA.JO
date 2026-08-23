@@ -101,6 +101,8 @@ function RootNavigator({ isAuthenticated, isElevated }: { isAuthenticated: boole
           options={{ headerShown: true, title: 'Partenaire', presentation: 'modal' }}
         />
         <Stack.Protected guard={isElevated}>
+          <Stack.Screen name="hub" />
+          <Stack.Screen name="(finance)" />
           <Stack.Screen
             name="comptes"
             options={{ headerShown: true, title: 'Comptes utilisateurs', presentation: 'modal' }}

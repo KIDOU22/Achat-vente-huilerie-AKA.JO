@@ -53,16 +53,46 @@ import {
   soldeCaisse,
 } from '../db/repositories/caisses';
 import { getUserById, listUsers } from '../db/repositories/users';
-import type { Caisse, MouvementCaisse, Partenaire, Pesee, Vente } from '../domain/types';
+import {
+  ajouterFinanceCategorie as ajouterFinanceCategorieRepo,
+  ajouterMouvementTresorerie as ajouterMouvementTresorerieRepo,
+  creerBudgetAnnuel as creerBudgetAnnuelRepo,
+  listBudgetLignes,
+  listBudgets,
+  listFinanceCategories,
+  listMouvementsTresorerie,
+  renommerFinanceCategorie as renommerFinanceCategorieRepo,
+  supprimerMouvementTresorerie as supprimerMouvementTresorerieRepo,
+  toggleFinanceCategorieActif as toggleFinanceCategorieActifRepo,
+  upsertBudgetLigne as upsertBudgetLigneRepo,
+} from '../db/repositories/finance';
+import type {
+  BudgetAnnuel,
+  BudgetLigne,
+  Caisse,
+  FinanceCategorie,
+  FinanceCategorieType,
+  ModePaiement,
+  MouvementCaisse,
+  MouvementTresorerie,
+  Partenaire,
+  Pesee,
+  Vente,
+} from '../domain/types';
 import { supabase } from '../lib/supabase';
 import { pullAll } from '../sync/pull';
 import {
+  pushBudgetAnnuel,
+  pushBudgetLigne,
   pushCaisse,
   pushDeleteMouvementForPesee,
   pushDeleteMouvementForVente,
+  pushDeleteMouvementTresorerie,
   pushDeletePartenaire,
+  pushFinanceCategorie,
   pushMouvement,
   pushMouvementStatus,
+  pushMouvementTresorerie,
   pushPayeRegimeStatus,
   pushPayeTransportPeseeStatus,
   pushPayeHuileStatus,
@@ -127,6 +157,26 @@ interface DataContextValue {
   }) => Promise<void>;
   validerMouvement: (id: string) => Promise<void>;
   rejeterMouvement: (id: string) => Promise<void>;
+  // Module Finance & Comptabilité — Phase 1.
+  financeCategories: FinanceCategorie[];
+  budgets: BudgetAnnuel[];
+  budgetLignes: BudgetLigne[];
+  mouvementsTresorerie: MouvementTresorerie[];
+  ajouterFinanceCategorie: (type: FinanceCategorieType, libelle: string) => Promise<void>;
+  renommerFinanceCategorie: (id: string, libelle: string) => Promise<void>;
+  toggleFinanceCategorieActif: (id: string, actif: boolean) => Promise<void>;
+  creerBudgetAnnuel: (annee: number, soldeOuverture: number, dateOuverture: number) => Promise<BudgetAnnuel>;
+  majLigneBudget: (budgetId: string, categorieId: string, mois: number, montantPrevu: number) => Promise<void>;
+  ajouterMouvementTresorerie: (input: {
+    ts: number;
+    numPiece: string;
+    libelle: string;
+    categorieId: string;
+    modePaiement: ModePaiement;
+    entree: number;
+    sortie: number;
+  }) => Promise<void>;
+  supprimerMouvementTresorerie: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | undefined>(undefined);
@@ -144,9 +194,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [prixLitre, setPrixLitreState] = useState('950');
   const [prixTransportRegime, setPrixTransportRegimeState] = useState('10');
   const [loading, setLoading] = useState(true);
+  const [financeCategories, setFinanceCategories] = useState<FinanceCategorie[]>([]);
+  const [budgets, setBudgets] = useState<BudgetAnnuel[]>([]);
+  const [budgetLignes, setBudgetLignes] = useState<BudgetLigne[]>([]);
+  const [mouvementsTresorerie, setMouvementsTresorerie] = useState<MouvementTresorerie[]>([]);
 
   const refresh = useCallback(async () => {
-    const [p, a, v, t, pk, pl, ptr, c, m] = await Promise.all([
+    const [p, a, v, t, pk, pl, ptr, c, m, fc, fb, fbl, fm] = await Promise.all([
       listPartenaires(db),
       listPesees(db),
       listVentes(db),
@@ -156,6 +210,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       getSetting(db, 'prixTransportRegime', '10'),
       listCaisses(db),
       listMouvements(db),
+      listFinanceCategories(db),
+      listBudgets(db),
+      listBudgetLignes(db),
+      listMouvementsTresorerie(db),
     ]);
     setPartenaires(p);
     setPesees(a);
@@ -166,6 +224,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setPrixTransportRegimeState(ptr);
     setCaisses(c);
     setMouvements(m);
+    setFinanceCategories(fc);
+    setBudgets(fb);
+    setBudgetLignes(fbl);
+    setMouvementsTresorerie(fm);
   }, [db]);
 
   useEffect(() => {
@@ -245,19 +307,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (error || !data) return null;
       return new Set(data.map((r: { id: string }) => r.id));
     };
-    const [localCaisses, localPartenaires, localPesees, localVentes, localUsers] = await Promise.all([
-      listCaisses(db),
-      listPartenaires(db),
-      listPesees(db),
-      listVentes(db),
-      listUsers(db),
-    ]);
-    const [remoteCaisseIds, remotePartenaireIds, remotePeseeIds, remoteVenteIds, remoteUserIds] = await Promise.all([
+    const [localCaisses, localPartenaires, localPesees, localVentes, localUsers, localCategories, localBudgets, localBudgetLignes, localMvtTresorerie] =
+      await Promise.all([
+        listCaisses(db),
+        listPartenaires(db),
+        listPesees(db),
+        listVentes(db),
+        listUsers(db),
+        listFinanceCategories(db),
+        listBudgets(db),
+        listBudgetLignes(db),
+        listMouvementsTresorerie(db),
+      ]);
+    const [
+      remoteCaisseIds,
+      remotePartenaireIds,
+      remotePeseeIds,
+      remoteVenteIds,
+      remoteUserIds,
+      remoteCategorieIds,
+      remoteBudgetIds,
+      remoteBudgetLigneIds,
+      remoteMvtTresorerieIds,
+    ] = await Promise.all([
       fetchRemoteIds('caisses'),
       fetchRemoteIds('planteurs'),
       fetchRemoteIds('pesees'),
       fetchRemoteIds('ventes'),
       fetchRemoteIds('local_accounts'),
+      fetchRemoteIds('finance_categories'),
+      fetchRemoteIds('finance_budgets'),
+      fetchRemoteIds('finance_budget_lignes'),
+      fetchRemoteIds('finance_mouvements'),
     ]);
     await Promise.all([
       ...jamaisEncoreSynchronises(localCaisses, remoteCaisseIds).map((c) => pushCaisse(c).catch(() => {})),
@@ -265,6 +346,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ...jamaisEncoreSynchronises(localPesees, remotePeseeIds).map((t) => pushPesee(t).catch(() => {})),
       ...jamaisEncoreSynchronises(localVentes, remoteVenteIds).map((v) => pushVente(v).catch(() => {})),
       ...jamaisEncoreSynchronises(localUsers, remoteUserIds).map((u) => pushUser(u).catch(() => {})),
+      ...jamaisEncoreSynchronises(localCategories, remoteCategorieIds).map((c) => pushFinanceCategorie(c).catch(() => {})),
+      ...jamaisEncoreSynchronises(localBudgets, remoteBudgetIds).map((b) => pushBudgetAnnuel(b).catch(() => {})),
+      ...jamaisEncoreSynchronises(localBudgetLignes, remoteBudgetLigneIds).map((l) => pushBudgetLigne(l).catch(() => {})),
+      ...jamaisEncoreSynchronises(localMvtTresorerie, remoteMvtTresorerieIds).map((m) => pushMouvementTresorerie(m).catch(() => {})),
     ]);
   }, [db]);
 
@@ -855,6 +940,102 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [db, refresh, currentUser]
   );
 
+  // ============================================================
+  // Module Finance & Comptabilité — Phase 1. Écriture réservée au Gérant côté
+  // écrans (isManager) et côté RLS (is_gerant()) — voir le plan de développement.
+  // ============================================================
+
+  const ajouterFinanceCategorie = useCallback(
+    async (type: FinanceCategorieType, libelle: string) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      const c = await ajouterFinanceCategorieRepo(db, { type, libelle, actor: { userId: currentUser.id, userNom: currentUser.nom } });
+      await refresh();
+      pushFinanceCategorie(c).catch(() => {});
+    },
+    [db, refresh, currentUser]
+  );
+
+  const renommerFinanceCategorie = useCallback(
+    async (id: string, libelle: string) => {
+      await renommerFinanceCategorieRepo(db, id, libelle);
+      await refresh();
+      const c = financeCategories.find((x) => x.id === id);
+      if (c) pushFinanceCategorie({ ...c, libelle: libelle.trim() }).catch(() => {});
+    },
+    [db, refresh, financeCategories]
+  );
+
+  const toggleFinanceCategorieActif = useCallback(
+    async (id: string, actif: boolean) => {
+      await toggleFinanceCategorieActifRepo(db, id, actif);
+      await refresh();
+      const c = financeCategories.find((x) => x.id === id);
+      if (c) pushFinanceCategorie({ ...c, actif }).catch(() => {});
+    },
+    [db, refresh, financeCategories]
+  );
+
+  const creerBudgetAnnuel = useCallback(
+    async (annee: number, soldeOuverture: number, dateOuverture: number) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      const b = await creerBudgetAnnuelRepo(db, {
+        annee,
+        soldeOuverture,
+        dateOuverture,
+        actor: { userId: currentUser.id, userNom: currentUser.nom },
+      });
+      await refresh();
+      const r = await pushBudgetAnnuel(b).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (budget annuel)', r.error ?? 'Erreur inconnue');
+      }
+      return b;
+    },
+    [db, refresh, currentUser]
+  );
+
+  const majLigneBudget = useCallback(
+    async (budgetId: string, categorieId: string, mois: number, montantPrevu: number) => {
+      const l = await upsertBudgetLigneRepo(db, { budgetId, categorieId, mois, montantPrevu });
+      await refresh();
+      pushBudgetLigne(l).catch(() => {});
+    },
+    [db, refresh]
+  );
+
+  const ajouterMouvementTresorerie = useCallback(
+    async (input: {
+      ts: number;
+      numPiece: string;
+      libelle: string;
+      categorieId: string;
+      modePaiement: ModePaiement;
+      entree: number;
+      sortie: number;
+    }) => {
+      if (!currentUser) throw new Error('Utilisateur non connecté');
+      const m = await ajouterMouvementTresorerieRepo(db, { ...input, actor: { userId: currentUser.id, userNom: currentUser.nom } });
+      await refresh();
+      const r = await pushMouvementTresorerie(m).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (mouvement de trésorerie)', r.error ?? 'Erreur inconnue');
+      }
+    },
+    [db, refresh, currentUser]
+  );
+
+  const supprimerMouvementTresorerie = useCallback(
+    async (id: string) => {
+      await supprimerMouvementTresorerieRepo(db, id);
+      await refresh();
+      const r = await pushDeleteMouvementTresorerie(id).catch((err) => ({ ok: false, error: String(err) }));
+      if (!r.ok) {
+        Alert.alert('Synchro cloud échouée (suppression mouvement)', r.error ?? 'Erreur inconnue');
+      }
+    },
+    [db, refresh]
+  );
+
   const value = useMemo<DataContextValue>(
     () => ({
       partenaires,
@@ -894,6 +1075,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       enregistrerReglement,
       validerMouvement,
       rejeterMouvement,
+      financeCategories,
+      budgets,
+      budgetLignes,
+      mouvementsTresorerie,
+      ajouterFinanceCategorie,
+      renommerFinanceCategorie,
+      toggleFinanceCategorieActif,
+      creerBudgetAnnuel,
+      majLigneBudget,
+      ajouterMouvementTresorerie,
+      supprimerMouvementTresorerie,
     }),
     [
       partenaires,
@@ -933,6 +1125,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       enregistrerReglement,
       validerMouvement,
       rejeterMouvement,
+      financeCategories,
+      budgets,
+      budgetLignes,
+      mouvementsTresorerie,
+      ajouterFinanceCategorie,
+      renommerFinanceCategorie,
+      toggleFinanceCategorieActif,
+      creerBudgetAnnuel,
+      majLigneBudget,
+      ajouterMouvementTresorerie,
+      supprimerMouvementTresorerie,
     ]
   );
 
