@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Huilerie Aka.Jo — Tableau de bord</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --bg: #D4491F;
+    --bg-alt: #B23A16;
+    --surface: #FFFFFF;
+    --surface-raised: #FFF4EC;
+    --border: #EAD9CB;
+    --text: #2A1810;
+    --text-muted: #8A6F5C;
+    --text-faint: #B9A794;
+    --on-bg: #FFFFFF;
+    --on-bg-muted: rgba(255,255,255,0.78);
+    --accent: #8C2E10;
+    --amber: #C97A1E;
+    --frond: #5A7350;
+    --oil: #B8860B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--on-bg);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  .eyebrow { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--on-bg-muted); margin: 0 0 4px; }
+  h1 { font-size: 22px; margin: 0; color: var(--on-bg); }
+  .userbox { display: flex; align-items: center; gap: 10px; }
+  .badge { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; padding: 3px 9px; border-radius: 999px; background: rgba(255,255,255,0.18); }
+  button { cursor: pointer; font-family: inherit; }
+  .btn { border: none; border-radius: 10px; padding: 12px 18px; font-weight: 600; font-size: 15px; background: var(--accent); color: #fff; }
+  .btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.5); color: #fff; }
+  .btn:disabled { opacity: .5; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .grid { display: grid; gap: 12px; }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 640px) { .grid.cols-4 { grid-template-columns: repeat(2, 1fr); } }
+  label { display: block; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+  input[type=text], input[type=password] {
+    width: 100%; padding: 13px 14px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 16px;
+  }
+  #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
+  #login-card { width: 100%; max-width: 360px; }
+  #login-card h1 { text-align: center; margin-bottom: 20px; }
+  .field { margin-bottom: 14px; }
+  .error { color: var(--on-bg); background: rgba(0,0,0,0.15); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); margin: 0 0 4px; }
+  .stat-value { font-family: 'Courier New', monospace; font-size: 20px; font-weight: 700; color: var(--accent); margin: 0; }
+  .stat-value.oil { color: var(--oil); }
+  .stat-value.frond { color: var(--frond); }
+  .stat-value.amber { color: var(--amber); }
+  .section-title { color: var(--accent); font-size: 15px; font-weight: 700; margin: 28px 0 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .section-title.oil { color: var(--oil); }
+  .section-title.frond { color: var(--frond); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); color: var(--text); }
+  th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
+  .muted { color: var(--text-muted); }
+  .locked { color: var(--text-faint); font-style: italic; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .pill.paye { background: rgba(90,115,80,0.15); color: var(--frond); }
+  .pill.impaye { background: rgba(140,46,16,0.12); color: var(--accent); }
+  .pill.attente { background: rgba(201,122,30,0.15); color: var(--amber); }
+  #dash-screen { display: none; }
+  .hidden { display: none !important; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--frond); display: inline-block; margin-right: 6px; }
+  .live-row { display: flex; align-items: center; font-size: 12px; color: var(--on-bg-muted); margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div id="login-card" class="card">
+    <h1 style="color:var(--accent)">Huilerie Aka.Jo</h1>
+    <div id="login-error" class="error hidden"></div>
+    <div class="field">
+      <label>Identifiant</label>
+      <input type="text" id="login-id" autocomplete="username" placeholder="ex: gerant" />
+    </div>
+    <div class="field">
+      <label>Code d'accès</label>
+      <input type="password" id="login-code" autocomplete="current-password" placeholder="••••" inputmode="numeric" />
+    </div>
+    <button class="btn" id="login-btn" style="width:100%">Se connecter</button>
+  </div>
+</div>
+
+<div id="dash-screen">
+  <div class="wrap">
+    <header class="top">
+      <div>
+        <p class="eyebrow">Huilerie Aka.Jo — Pont-bascule</p>
+        <h1>Tableau de bord</h1>
+      </div>
+      <div class="userbox">
+        <span id="user-nom"></span>
+        <span class="badge" id="user-role"></span>
+        <button class="btn ghost" id="logout-btn">Déconnexion</button>
+      </div>
+    </header>
+
+    <div class="live-row"><span class="status-dot"></span> Mise à jour en temps réel</div>
+
+    <div class="grid cols-4" id="stats-grid"></div>
+
+    <div class="section-title">Achats de régimes récents</div>
+    <div class="card"><table id="table-achats"><thead></thead><tbody></tbody></table></div>
+
+    <div class="section-title oil">Ventes d'huile récentes</div>
+    <div class="card"><table id="table-ventes"><thead></thead><tbody></tbody></table></div>
+
+    <div class="section-title">Planteurs</div>
+    <div class="card"><table id="table-planteurs"><thead><tr><th>Nom</th><th>Village</th><th>Tonnage cumulé</th></tr></thead><tbody></tbody></table></div>
+
+    <div id="caisses-section">
+      <div class="section-title frond">Caisses</div>
+      <div class="grid cols-4" id="caisses-solde-grid" style="margin-bottom:16px;"></div>
+      <div class="card"><table id="table-mouvements"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="section-title">Export des données</div>
+    <div class="card" id="export-card">
+      <div class="grid cols-2">
+        <div class="field">
+          <label>Du</label>
+          <input type="date" id="export-from" />
+        </div>
+        <div class="field">
+          <label>Au</label>
+          <input type="date" id="export-to" />
+        </div>
+      </div>
+      <div id="export-error" class="error hidden"></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+        <button class="btn" id="export-achats-btn">Exporter les achats (Excel)</button>
+        <button class="btn" id="export-ventes-btn">Exporter les ventes (Excel)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://dwhyuzycifzaxqislvia.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_ceflfGntle8zP5PIAxXADA_HrKn_z1w';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const fmtNum = (n) => Math.round(n || 0).toLocaleString('fr-FR');
+const fmtF = (n) => `${fmtNum(n)} F`;
+const fmtKg = (n) => `${fmtNum(n)} kg`;
+const fmtT = (kg) => `${((kg || 0) / 1000).toFixed(2)} t`;
+const deriveEmail = (id) => `akajo-${id.trim().toLowerCase()}@gmail.com`;
+const derivePassword = (id, code) => `akajo-${id.trim().toLowerCase()}-${code.trim()}-sync`;
+
+let currentRole = null;
+let currentNom = '';
+let realtimeChannel = null;
+let allPesees = [];
+let allVentes = [];
+let allPlanteurs = [];
+
+const loginScreen = document.getElementById('login-screen');
+const dashScreen = document.getElementById('dash-screen');
+const loginBtn = document.getElementById('login-btn');
+const loginError = document.getElementById('login-error');
+
+document.getElementById('login-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+loginBtn.addEventListener('click', doLogin);
+document.getElementById('logout-btn').addEventListener('click', doLogout);
+
+async function doLogin() {
+  const id = document.getElementById('login-id').value.trim();
+  const code = document.getElementById('login-code').value.trim();
+  loginError.classList.add('hidden');
+  if (!id || !code) return;
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Connexion...';
+  try {
+    const email = deriveEmail(id);
+    const password = derivePassword(id, code);
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      loginError.textContent = "Identifiant ou code d'accès incorrect.";
+      loginError.classList.remove('hidden');
+      return;
+    }
+    await enterDashboard();
+  } finally {
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Se connecter';
+  }
+}
+
+async function doLogout() {
+  if (realtimeChannel) sb.removeChannel(realtimeChannel);
+  await sb.auth.signOut();
+  dashScreen.style.display = 'none';
+  loginScreen.style.display = 'flex';
+  document.getElementById('login-id').value = '';
+  document.getElementById('login-code').value = '';
+}
+
+async function enterDashboard() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
+  if (!profile || !profile.actif) {
+    loginError.textContent = 'Compte introuvable ou révoqué.';
+    loginError.classList.remove('hidden');
+    await sb.auth.signOut();
+    return;
+  }
+  currentRole = profile.role;
+  currentNom = profile.nom;
+  document.getElementById('user-nom').textContent = currentNom;
+  const roleLabel = document.getElementById('user-role');
+  const roleLabels = { gerant: 'Gérant', dirigeant: 'Dirigeant', agent: 'Agent pont-bascule' };
+  const roleBg = { gerant: 'rgba(184,134,11,0.35)', dirigeant: 'rgba(90,115,80,0.35)', agent: 'rgba(201,122,30,0.35)' };
+  roleLabel.textContent = roleLabels[currentRole] || currentRole;
+  roleLabel.style.background = roleBg[currentRole] || roleBg.agent;
+
+  loginScreen.style.display = 'none';
+  dashScreen.style.display = 'block';
+
+  await loadAll();
+  subscribeRealtime();
+}
+
+async function loadAll() {
+  // Les caisses/mouvements ne concernent que le gérant et le dirigeant — un agent ne
+  // voit (comme dans l'app mobile) que sa propre caisse, pas celle des autres : la
+  // section entière reste masquée pour lui sur le tableau de bord.
+  const wantsCaisses = currentRole !== 'agent';
+  const [{ data: pesees }, ventesResult, { data: planteurs }, caissesResult, mouvementsResult] = await Promise.all([
+    sb.from('pesees').select('*').order('ts', { ascending: false }).limit(50),
+    currentRole !== 'agent'
+      ? sb.from('ventes').select('*').order('ts', { ascending: false }).limit(50)
+      : sb.from('ventes_agent_view').select('*').order('ts', { ascending: false }).limit(50),
+    sb.from('planteurs').select('*'),
+    wantsCaisses ? sb.from('caisses').select('*') : Promise.resolve({ data: [] }),
+    wantsCaisses
+      ? sb.from('mouvements_caisse').select('*').order('ts', { ascending: false }).limit(200)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const ventes = ventesResult.data || [];
+  allPesees = pesees || [];
+  allVentes = ventes;
+  allPlanteurs = planteurs || [];
+  renderStats(allPesees, ventes);
+  renderAchats(allPesees, allPlanteurs);
+  renderVentes(ventes);
+  renderPlanteurs(allPlanteurs, allPesees);
+  document.getElementById('caisses-section').style.display = wantsCaisses ? '' : 'none';
+  if (wantsCaisses) renderCaisses(caissesResult.data || [], mouvementsResult.data || []);
+}
+
+function todayKey() {
+  return new Date().toDateString();
+}
+
+function renderStats(pesees, ventes) {
+  const today = todayKey();
+  const todayPesees = pesees.filter((p) => new Date(p.ts).toDateString() === today);
+  const todayVentes = ventes.filter((v) => new Date(v.ts).toDateString() === today);
+  const tonnage = todayPesees.reduce((s, p) => s + p.net, 0);
+  const achatMontant = todayPesees.reduce((s, p) => s + p.montant, 0);
+  const transportRegime = todayPesees.reduce((s, p) => s + (p.montant_transport || 0), 0);
+
+  const cards = [
+    { label: 'Régimes — jour', value: fmtT(tonnage), cls: 'amber' },
+    { label: 'Achats — jour', value: fmtF(achatMontant), cls: '' },
+    { label: 'Transport régime — jour', value: fmtF(transportRegime), cls: 'frond' },
+  ];
+
+  if (currentRole !== 'agent') {
+    const venteMontant = todayVentes.reduce((s, v) => s + (v.montant || 0), 0);
+    const transportHuile = todayVentes.reduce((s, v) => s + (v.montant_transport || 0), 0);
+    cards.push({ label: 'Ventes huile — jour', value: fmtF(venteMontant), cls: 'oil' });
+    cards.push({ label: 'Transport huile — jour', value: fmtF(transportHuile), cls: 'frond' });
+  }
+
+  const grid = document.getElementById('stats-grid');
+  grid.innerHTML = cards.map((c) => `
+    <div class="card">
+      <p class="stat-label">${c.label}</p>
+      <p class="stat-value ${c.cls}">${c.value}</p>
+    </div>
+  `).join('');
+}
+
+function renderAchats(pesees, planteurs) {
+  const nomParPlanteur = {};
+  for (const pl of planteurs) nomParPlanteur[pl.id] = pl.nom;
+  const table = document.getElementById('table-achats');
+  table.querySelector('thead').innerHTML = `<tr><th>N° pesée</th><th>Planteur</th><th>Chauffeur</th><th>Net</th><th>Prix/kg</th><th>Montant</th><th>Transport</th><th>Régime</th><th>Transport</th></tr>`;
+  table.querySelector('tbody').innerHTML = pesees.slice(0, 20).map((p) => `
+    <tr>
+      <td>${p.num_ticket}</td>
+      <td>${nomParPlanteur[p.planteur_id] || '—'}</td>
+      <td>${p.chauffeur}</td>
+      <td>${fmtKg(p.net)}</td>
+      <td>${fmtF(p.prix_kg)}</td>
+      <td>${fmtF(p.montant)}</td>
+      <td>${fmtF(p.montant_transport)}</td>
+      <td><span class="pill ${p.paye_regime ? 'paye' : 'impaye'}">${p.paye_regime ? 'Payé' : 'Impayé'}</span></td>
+      <td><span class="pill ${p.paye_transport ? 'paye' : 'impaye'}">${p.paye_transport ? 'Payé' : 'Impayé'}</span></td>
+    </tr>
+  `).join('') || `<tr><td class="muted" colspan="9">Aucune pesée</td></tr>`;
+}
+
+function renderVentes(ventes) {
+  const table = document.getElementById('table-ventes');
+  if (currentRole !== 'agent') {
+    table.querySelector('thead').innerHTML = `<tr><th>N° pesée</th><th>Client</th><th>Net</th><th>Prix/litre</th><th>Montant</th><th>Transport</th></tr>`;
+    table.querySelector('tbody').innerHTML = ventes.slice(0, 20).map((v) => `
+      <tr>
+        <td>${v.num_ticket}</td>
+        <td>${v.client}</td>
+        <td>${fmtKg(v.net)}</td>
+        <td>${fmtF(v.prix_litre)}</td>
+        <td>${fmtF(v.montant)}</td>
+        <td>${fmtF(v.montant_transport)}</td>
+      </tr>
+    `).join('') || `<tr><td class="muted" colspan="6">Aucune vente</td></tr>`;
+  } else {
+    table.querySelector('thead').innerHTML = `<tr><th>N° pesée</th><th>Client</th><th>Net</th><th>Montant</th></tr>`;
+    table.querySelector('tbody').innerHTML = ventes.slice(0, 20).map((v) => `
+      <tr>
+        <td>${v.num_ticket}</td>
+        <td>${v.client}</td>
+        <td>${fmtKg(v.net)}</td>
+        <td class="locked">🔒 masqué</td>
+      </tr>
+    `).join('') || `<tr><td class="muted" colspan="4">Aucune vente</td></tr>`;
+  }
+}
+
+function renderPlanteurs(planteurs, pesees) {
+  const tonnageByPlanteur = {};
+  for (const p of pesees) {
+    tonnageByPlanteur[p.planteur_id] = (tonnageByPlanteur[p.planteur_id] || 0) + p.net;
+  }
+  // La table "planteurs" couvre aussi les ponts indépendants et les chauffeurs
+  // (colonne "type") — cette liste ne montre que les planteurs proprement dits.
+  const seulsPlanteurs = planteurs.filter((pl) => !pl.type || pl.type === 'planteur');
+  const tbody = document.querySelector('#table-planteurs tbody');
+  tbody.innerHTML = seulsPlanteurs.map((pl) => `
+    <tr>
+      <td>${pl.nom}</td>
+      <td>${pl.village}</td>
+      <td>${fmtT(tonnageByPlanteur[pl.id] || 0)}</td>
+    </tr>
+  `).join('') || `<tr><td class="muted" colspan="3">Aucun planteur</td></tr>`;
+}
+
+document.getElementById('export-achats-btn').addEventListener('click', exportAchats);
+document.getElementById('export-ventes-btn').addEventListener('click', exportVentes);
+
+function csvEscape(value) {
+  const s = value === null || value === undefined ? '' : String(value);
+  if (/[",;\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function toCSV(headers, rows) {
+  const lines = [headers.map(csvEscape).join(';')];
+  for (const row of rows) lines.push(row.map(csvEscape).join(';'));
+  return '\uFEFF' + lines.join('\r\n');
+}
+
+function downloadCSV(filename, content) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function dateForFilename(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function showExportError(message) {
+  const el = document.getElementById('export-error');
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+function getExportRange() {
+  const fromEl = document.getElementById('export-from');
+  const toEl = document.getElementById('export-to');
+  document.getElementById('export-error').classList.add('hidden');
+  if (!fromEl.value || !toEl.value) {
+    showExportError('Choisissez une date de début et une date de fin.');
+    return null;
+  }
+  const from = new Date(fromEl.value + 'T00:00:00');
+  const to = new Date(toEl.value + 'T23:59:59.999');
+  if (from > to) {
+    showExportError('La date de début doit précéder la date de fin.');
+    return null;
+  }
+  return { from, to };
+}
+
+async function exportAchats() {
+  const range = getExportRange();
+  if (!range) return;
+  const btn = document.getElementById('export-achats-btn');
+  btn.disabled = true;
+  try {
+    const { data, error } = await sb.from('pesees').select('*')
+      .gte('ts', range.from.toISOString())
+      .lte('ts', range.to.toISOString())
+      .order('ts', { ascending: true });
+    if (error) {
+      showExportError("Échec de l'export : " + error.message);
+      return;
+    }
+    const nomParPlanteur = {};
+    for (const pl of allPlanteurs) nomParPlanteur[pl.id] = pl.nom;
+    const headers = ['N° pesée', 'Date', 'Planteur', 'Chauffeur', 'Véhicule', 'Immatriculation', 'Poids chargé (kg)', 'Poids vide (kg)', 'Net (kg)', 'Prix/kg', 'Montant', 'Prix transport/kg', 'Montant transport', 'Statut paiement régime', 'Statut paiement transport', 'Statut'];
+    const rows = (data || []).map((p) => [
+      p.num_ticket,
+      new Date(p.ts).toLocaleString('fr-FR'),
+      nomParPlanteur[p.planteur_id] || '—',
+      p.chauffeur,
+      p.type_vehicule,
+      p.immatriculation,
+      p.poids_charge,
+      p.poids_vide,
+      p.net,
+      p.prix_kg,
+      p.montant,
+      p.prix_transport_kg,
+      p.montant_transport,
+      p.paye_regime ? 'Payé' : 'Impayé',
+      p.paye_transport ? 'Payé' : 'Impayé',
+      p.annulee ? 'Annulée' : 'Active',
+    ]);
+    downloadCSV(`achats_${dateForFilename(range.from)}_${dateForFilename(range.to)}.csv`, toCSV(headers, rows));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function exportVentes() {
+  const range = getExportRange();
+  if (!range) return;
+  const btn = document.getElementById('export-ventes-btn');
+  btn.disabled = true;
+  try {
+    const table = currentRole !== 'agent' ? 'ventes' : 'ventes_agent_view';
+    const { data, error } = await sb.from(table).select('*')
+      .gte('ts', range.from.toISOString())
+      .lte('ts', range.to.toISOString())
+      .order('ts', { ascending: true });
+    if (error) {
+      showExportError("Échec de l'export : " + error.message);
+      return;
+    }
+    let headers, rows;
+    if (currentRole !== 'agent') {
+      headers = ['N° pesée', 'Date', 'Client', 'Chauffeur', 'Véhicule', 'Immatriculation', 'Poids chargé (kg)', 'Poids vide (kg)', 'Net (kg)', 'Prix/litre', 'Montant', 'Prix transport/kg', 'Montant transport', 'Statut'];
+      rows = (data || []).map((v) => [
+        v.num_ticket,
+        new Date(v.ts).toLocaleString('fr-FR'),
+        v.client,
+        v.chauffeur,
+        v.type_vehicule,
+        v.immatriculation,
+        v.poids_charge,
+        v.poids_vide,
+        v.net,
+        v.prix_litre,
+        v.montant,
+        v.prix_transport_kg,
+        v.montant_transport,
+        v.annulee ? 'Annulée' : 'Active',
+      ]);
+    } else {
+      headers = ['N° pesée', 'Date', 'Client', 'Net (kg)'];
+      rows = (data || []).map((v) => [v.num_ticket, new Date(v.ts).toLocaleString('fr-FR'), v.client, v.net]);
+    }
+    downloadCSV(`ventes_${dateForFilename(range.from)}_${dateForFilename(range.to)}.csv`, toCSV(headers, rows));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+const MOUVEMENT_TYPE_LABELS = {
+  allocation: 'Allocation',
+  depense: 'Dépense',
+  retour: 'Retour caisse principale',
+  transfert: 'Transfert',
+  apport: 'Apport (dépôt)',
+};
+const MOUVEMENT_STATUT_LABELS = { en_attente: 'En attente', validee: 'Validé', rejetee: 'Rejeté' };
+const MOUVEMENT_STATUT_PILL = { en_attente: 'attente', validee: 'paye', rejetee: 'impaye' };
+
+function caisseLabel(c) {
+  if (c.type === 'principale') return 'Caisse principale';
+  if (c.type === 'banque') return 'Banque';
+  return c.owner_identifiant || 'Caisse';
+}
+
+// Même règle que côté app mobile (src/db/repositories/caisses.ts) : solde = somme
+// des mouvements VALIDÉS reçus moins ceux envoyés (un mouvement en attente ou rejeté
+// ne compte pas encore/plus dans le solde).
+function soldeCaisse(caisseId, mouvements) {
+  let solde = 0;
+  for (const m of mouvements) {
+    if (m.statut !== 'validee') continue;
+    if (m.caisse_to_id === caisseId) solde += m.montant;
+    if (m.caisse_from_id === caisseId) solde -= m.montant;
+  }
+  return solde;
+}
+
+function renderCaisses(caisses, mouvements) {
+  const grid = document.getElementById('caisses-solde-grid');
+  grid.innerHTML = caisses.map((c) => `
+    <div class="card">
+      <p class="stat-label">${caisseLabel(c)}</p>
+      <p class="stat-value frond">${fmtF(soldeCaisse(c.id, mouvements))}</p>
+    </div>
+  `).join('') || `<p class="muted">Aucune caisse</p>`;
+
+  const labelById = {};
+  for (const c of caisses) labelById[c.id] = caisseLabel(c);
+
+  const table = document.getElementById('table-mouvements');
+  table.querySelector('thead').innerHTML = `<tr><th>Date</th><th>Type</th><th>De</th><th>Vers</th><th>Montant</th><th>Motif</th><th>Statut</th><th>Par</th></tr>`;
+  table.querySelector('tbody').innerHTML = mouvements.map((m) => `
+    <tr>
+      <td>${new Date(m.ts).toLocaleString('fr-FR')}</td>
+      <td>${MOUVEMENT_TYPE_LABELS[m.type] || m.type}</td>
+      <td>${m.caisse_from_id ? (labelById[m.caisse_from_id] || '—') : '—'}</td>
+      <td>${m.caisse_to_id ? (labelById[m.caisse_to_id] || '—') : '—'}</td>
+      <td>${fmtF(m.montant)}</td>
+      <td>${m.motif || '—'}</td>
+      <td><span class="pill ${MOUVEMENT_STATUT_PILL[m.statut] || ''}">${MOUVEMENT_STATUT_LABELS[m.statut] || m.statut}</span></td>
+      <td>${m.created_by_nom}</td>
+    </tr>
+  `).join('') || `<tr><td class="muted" colspan="8">Aucun mouvement</td></tr>`;
+}
+
+function subscribeRealtime() {
+  // Regroupe les rafales d'événements rapprochés (plusieurs pesées créées coup sur
+  // coup, ou un appareil qui repousse ses données en attente) en un seul rechargement
+  // au lieu de vider/reconstruire les tableaux à chaque événement — sinon la page
+  // clignote et le défilement dans la liste des planteurs saute en permanence.
+  let reloadTimer = null;
+  const scheduleReload = () => {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(loadAll, 800);
+  };
+  realtimeChannel = sb
+    .channel('akajo-dashboard')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pesees' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ventes' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'planteurs' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'caisses' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'mouvements_caisse' }, scheduleReload)
+    .subscribe();
+}
+
+// Restaure une session existante (onglet rouvert)
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (session) enterDashboard();
+});
+</script>
+</body>
+</html>
