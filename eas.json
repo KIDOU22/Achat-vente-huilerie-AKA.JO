@@ -23,8 +23,8 @@
       },
       "env": {
         "APP_VARIANT": "demo",
-        "EXPO_PUBLIC_SUPABASE_URL": "REMPLACER_PAR_URL_PROJET_DEMO",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "REMPLACER_PAR_CLE_ANON_PROJET_DEMO"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://wtgtqvdsoxotdqntejfi.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0Z3RxdmRzb3hvdGRxbnRlamZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0ODM2NjIsImV4cCI6MjEwMzA1OTY2Mn0.9imO8XSCRExuS4s-p4QUP4TO4r-MPZTybl02eJw6QVA"
       }
     },
     "production": {
