@@ -1,7 +1,12 @@
+// Version démo (EXPO_PUBLIC_APP_VARIANT=demo, voir eas.json) : fond bleu au lieu de
+// l'orange-rouge de production, pour qu'on ne puisse jamais confondre les deux à
+// l'écran — même principe que l'icône distincte (voir app.config.js).
+const isDemo = process.env.EXPO_PUBLIC_APP_VARIANT === 'demo';
+
 // Thème clair : fond orange-rouge repris du logo Aka.Jo, zones de saisie en blanc.
 export const colors = {
-  background: '#D4491F', // orange-rouge du logo — fond principal de l'app
-  backgroundAlt: '#B23A16', // teinte plus sombre — bandeau de stats, contraste léger
+  background: isDemo ? '#1D4ECF' : '#D4491F', // orange-rouge du logo (bleu en démo) — fond principal de l'app
+  backgroundAlt: isDemo ? '#17399E' : '#B23A16', // teinte plus sombre — bandeau de stats, contraste léger
   surface: '#FFFFFF', // cartes + zones de saisie (texte)
   surfaceRaised: '#FFF4EC', // encarts en relief (poids net, montant) sur fond blanc/crème
   border: '#EAD9CB', // bordures sur surfaces blanches

@@ -13,7 +13,7 @@ module.exports = {
     scheme: isDemo ? 'huilerie-akajo-demo' : 'huilerie-akajo',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/images/logo-akajo.png',
+    icon: isDemo ? './assets/images/logo-akajo-demo.png' : './assets/images/logo-akajo.png',
     userInterfaceStyle: 'dark',
     newArchEnabled: true,
     plugins: ['expo-router', 'expo-sqlite', 'expo-secure-store'],
@@ -25,7 +25,7 @@ module.exports = {
       package: isDemo ? 'com.akajo.huilerie.demo' : 'com.akajo.huilerie',
       adaptiveIcon: {
         backgroundColor: isDemo ? '#1D4ECF' : '#1C1A17',
-        foregroundImage: './assets/images/logo-akajo.png',
+        foregroundImage: isDemo ? './assets/images/logo-akajo-demo.png' : './assets/images/logo-akajo.png',
       },
       predictiveBackGestureEnabled: false,
     },
