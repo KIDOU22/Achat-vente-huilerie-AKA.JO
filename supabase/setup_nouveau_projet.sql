@@ -1,7 +1,7 @@
 -- Huilerie Aka.Jo — création complète du schéma sur un PROJET SUPABASE NEUF
 -- (utile pour un environnement de démo/test, séparé de la production).
 -- Regroupe en un seul script l'état final de toutes les migrations
--- 0001 à 0018 (supabase/migrations/) — inutile de les rejouer une par une sur un
+-- 0001 à 0022 (supabase/migrations/) — inutile de les rejouer une par une sur un
 -- projet neuf. Sans effet destructeur si rejoué : repart d'une base propre si les
 -- tables existent déjà (comme 0001_init.sql).
 -- À exécuter UNE SEULE FOIS, juste après avoir créé le projet Supabase :
@@ -107,9 +107,9 @@ create policy "settings_update" on public.settings
   for update using (public.is_gerant());
 
 insert into public.settings (key, value) values
-  ('prixKg', '115'),
-  ('prixLitre', '950'),
-  ('prixTransportRegime', '10')
+  ('prixKg', '80'),
+  ('prixLitre', '600'),
+  ('prixTransportRegime', '11')
 on conflict (key) do nothing;
 
 -- ============================================================
@@ -294,6 +294,17 @@ create table public.mouvements_caisse (
 );
 
 create index idx_mouvements_ts on public.mouvements_caisse(ts desc);
+
+-- Au plus un mouvement de paiement par pesée/vente et par volet — empêche un double
+-- paiement si deux appareils tentent de réparer/créer le même mouvement manquant
+-- en même temps (voir 0020_dedup_paiements_doublons.sql).
+create unique index idx_mouvements_pesee_volet_unique
+  on public.mouvements_caisse (pesee_id, volet)
+  where pesee_id is not null and volet is not null;
+
+create unique index idx_mouvements_vente_volet_unique
+  on public.mouvements_caisse (vente_id, volet)
+  where vente_id is not null and volet is not null;
 
 alter table public.mouvements_caisse enable row level security;
 
