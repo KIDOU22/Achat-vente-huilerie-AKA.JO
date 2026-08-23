@@ -24,7 +24,7 @@ module.exports = {
     android: {
       package: isDemo ? 'com.akajo.huilerie.demo' : 'com.akajo.huilerie',
       adaptiveIcon: {
-        backgroundColor: isDemo ? '#5A3D9E' : '#1C1A17',
+        backgroundColor: isDemo ? '#1D4ECF' : '#1C1A17',
         foregroundImage: './assets/images/logo-akajo.png',
       },
       predictiveBackGestureEnabled: false,
